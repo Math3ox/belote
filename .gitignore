@@ -1,0 +1,7 @@
+belote.exe
+belote_shot.bmp
+belote.cfg
+sim.log
+*.png
+*.zip
+__pycache__/

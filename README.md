@@ -46,6 +46,7 @@ vide, les obligations de la belote classique s'appliquent. Même décompte (162 
 - Raccourcis : `J` 4 joueurs / à deux · `L` niveau des bots · `A` annonces · `H` aide · `P` objectif · `Q` qualité
   (2x anticrénelé / 1x rapide) · `F11` plein écran · `F12` capture `belote_shot.bmp` · `N` en ligne · `Échap` quitter.
 - `H` (aide) : conseil pour prendre ou passer, et la carte conseillée est surlignée en or pendant le jeu.
+- `G` : galerie des 32 cartes et du dos (contrôle du dessin).
 - `U` : l'ordinateur joue à ta place (démonstration / tests).
 
 ## Niveaux des bots (touche `L`)
@@ -69,6 +70,7 @@ redirection du port TCP **4210** sur la box). Les autres choisissent **R**, tape
 ## Fichiers
 - `belote.s` : point d'entrée, `-sim` (banc d'essai sans fenêtre). Inclut tout le reste.
 - `game.s` : règles, état de la donne, enchères, annonces, plis, décompte. `ai.s` : bots facile/normal. `mc.s` : bots difficiles.
+- `cards.s` : dessin des cartes (design bistrot : ivoire, double filet, indices en serif, points comme sur un vrai jeu, figures dans un cadre avec couronnes, dos bordeaux à losanges dorés).
 - `gfx.s` : primitives GDI, polices, transformation isométrique, dessin des cartes, réduction 2x2 (SSE).
 - `ui.s` / `ui2.s` : déroulement, animations, boutons, bulles, tapis, mains, panneaux. `gui.s` : fenêtre, tampons, plein écran,
   mise à l'échelle, réglages. `net.s` : jeu en ligne. `sim.s` : journal et simulations.

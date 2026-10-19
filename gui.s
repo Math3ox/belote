@@ -850,6 +850,12 @@ WndProc:
     call set_title_dbg
     jmp .Lw_zero
 .Lk12:
+    cmp r13d, 0x47                          # G : galerie des cartes
+    jne .Lk13
+    xor dword ptr [rip+g_gallery], 1
+    mov dword ptr [rip+g_dirty], 1
+    jmp .Lw_zero
+.Lk13:
     cmp r13d, 0x4E                          # N : multijoueur en ligne
     jne .Lw_zero
     call net_open

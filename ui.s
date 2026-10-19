@@ -8,14 +8,28 @@ k_d300:     .double 300.0
 k_c09:      .double 0.9
 k_c055:     .double 0.55
 k_c05:      .double 0.5
-k_c085:     .double 0.85
+k_d420:     .double 420.0
+k_pi:       .double 3.141592653589793
+k_lift:     .double 64.0
+k_c014:     .double 0.14
+k_chand:    .double 1.04
 k_c062:     .double 0.62
+k_c10:      .double 1.0
+k_c095:     .double 0.95
+k_c002:     .double 0.02
+k_c5:       .double 5.0
+k_c4:       .double 4.0
+k_c03:      .double 0.3
+k_c34:      .double 34.0
+k_c30:      .double 30.0
+k_c8:       .double 8.0
+k_c085:     .double 0.85
 k_1p57:     .double 1.5707963267948966
 k_m1p57:    .double -1.5707963267948966
 t_hx:       .long 550, 92, 550, 1008          # centre de la main (bas, gauche, haut, droite)
-t_hy:       .long 692, 345, 96, 345
-t_tx:       .long 550, 468, 550, 632          # arrivée de la carte dans le pli
-t_ty:       .long 396, 352, 306, 352
+t_hy:       .long 686, 345, 96, 345
+t_tx:       .long 550, 464, 550, 636          # arrivée de la carte dans le pli
+t_ty:       .long 402, 352, 302, 352
 t_bx:       .long 550, 215, 550, 885          # bulles
 t_by:       .long 598, 345, 172, 345
 t_lx:       .long 130, 92, 550, 1008          # étiquettes
@@ -369,11 +383,11 @@ apply_bid:                                 # ecx = choix (-1 passer)
 hand_cx:                                   # ecx = i, edx = n -> eax = x
     mov eax, edx
     dec eax
-    imul eax, eax, 39                      # -(n-1)*step/2 avec step = 78
+    imul eax, eax, 42                      # (n-1)*step/2 avec step = 84
     mov r8d, 550
     sub r8d, eax
     mov eax, ecx
-    imul eax, eax, 78
+    imul eax, eax, 84
     add eax, r8d
     ret
 
@@ -395,7 +409,7 @@ apply_play:                                # ecx = position dans la main du joue
     mov ecx, r12d
     mov edx, r15d
     call hand_cx
-    mov ecx, 692
+    mov ecx, 686
 1:  lea rdx, [rip+g_asx]
     mov dword ptr [rdx+r13*4], eax
     lea rdx, [rip+g_asy]
@@ -424,7 +438,7 @@ apply_play:                                # ecx = position dans la main du joue
 4:  add eax, 700
 5:  mov dword ptr [rip+g_wake], eax
     mov dword ptr [rip+g_hint], -1
-    mov ecx, 400
+    mov ecx, 560
     call ui_note
     LEAVE
 

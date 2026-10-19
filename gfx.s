@@ -21,6 +21,7 @@ RGB C_RED,     200, 32, 36
 RGB C_GOLD,    255, 205, 70
 RGB C_WHITE,   240, 240, 235
 RGB C_SHADOW,  8, 52, 36
+RGB C_SHFLY,   20, 92, 64
 RGB C_BACK0,   34, 56, 130
 RGB C_BACK1,   70, 96, 180
 RGB C_BTN,     60, 150, 100
@@ -48,6 +49,9 @@ RGB C_ENEMY,   255, 120, 140
 .equ F_MED,   7
 .equ F_HUGE,  8
 .equ F_SYM2,  9
+.equ F_SERIF, 10
+.equ F_SERIFBIG, 11
+.equ F_PIP,   12
 
 .section .rdata,"dr"
 .balign 16
@@ -65,6 +69,7 @@ k_w800:     .double 800.0
 k_eps6:     .double 0.000001
 c_face:     .asciz "Segoe UI"
 c_facesym:  .asciz "Segoe UI Symbol"
+c_geo:      .asciz "Georgia"
 # glyphes des couleurs : pique coeur carreau trèfle (UTF-16)
 w_suits:    .word 0x2660, 0x2665, 0x2666, 0x2663
 s_ranks:    .asciz "7", "8", "9", "10", "V", "D", "R", "A"
@@ -87,7 +92,7 @@ g_hdcS:     .skip 8                    # DC du petit tampon (1100x800)
 g_hdcBig:   .skip 8
 g_bigbits:  .skip 8
 g_smallbits:.skip 8
-g_fonts:    .skip 8*10
+g_fonts:    .skip 8*16
 g_tmp_d:    .skip 8
 g_tmp_d2:   .skip 8
 
@@ -181,6 +186,22 @@ init_fonts:
     mov edx, 400
     call mkfont
     mov qword ptr [r13+72], rax
+    lea r8, [rip+c_geo]
+    mov ecx, -25
+    mov edx, 700
+    call mkfont
+    mov qword ptr [r13+80], rax
+    lea r8, [rip+c_geo]
+    mov ecx, -50
+    mov edx, 700
+    call mkfont
+    mov qword ptr [r13+88], rax
+    lea r8, [rip+c_facesym]
+    mov ecx, -22
+    mov edx, 400
+    call mkfont
+    mov qword ptr [r13+96], rax
+    call cards_init
     LEAVE
 
 # ---------- couleurs et formes (coordonnées logiques) ----------
@@ -337,129 +358,6 @@ xf_reset:                              # retour à l'échelle seule
     movsd xmm2, qword ptr [rip+k_one]
     xorpd xmm3, xmm3
     call set_xf
-    LEAVE
-
-# ---------- cartes (repère canonique : 100 x 140 centré sur l'origine) ----------
-# draw_card : ecx = carte (0..31) ; dessine la face
-draw_card:
-    ENTER
-    mov r12d, ecx
-    mov r13d, ecx
-    shr r13d, 3                        # couleur
-    mov r14d, r12d
-    and r14d, 7                        # rang
-    mov ecx, C_SHADOW
-    mov edx, C_SHADOW
-    call set_cols
-    mov dword ptr [rip+g_rad], 12
-    mov ecx, -46
-    mov edx, -66
-    mov r8d, 100
-    mov r9d, 140
-    call rrect
-    mov ecx, C_IVORY
-    cmp dword ptr [rip+g_dim], 0
-    je 7f
-    mov ecx, 0x00B4B4AA                    # carte injouable : face grisée
-7:  mov edx, C_CARDLN
-    call set_cols
-    mov dword ptr [rip+g_rad], 12
-    mov ecx, -50
-    mov edx, -70
-    mov r8d, 100
-    mov r9d, 140
-    call rrect
-    mov eax, C_BLACK
-    lea rdx, [rip+t_isred]
-    cmp byte ptr [rdx+r13], 0
-    je 1f
-    mov eax, C_RED
-1:  mov dword ptr [rip+g_tc], eax
-    mov dword ptr [rip+g_ta], 6
-    lea rdx, [rip+s_ranks]
-    xor eax, eax
-    xor ecx, ecx
-2:  cmp ecx, r14d
-    je 3f
-    cmp byte ptr [rdx+rax], 0
-    jne 4f
-    inc ecx
-4:  inc eax
-    jmp 2b
-3:  lea r8, [rdx+rax]
-    mov ecx, -33
-    mov edx, -68
-    mov r9d, F_RANK
-    mov r15, r8
-    call gtext
-    mov ecx, -33
-    mov edx, -33
-    mov r8d, r13d
-    mov r9d, F_SUIT
-    call gglyph
-    mov ecx, 33
-    mov edx, 30
-    mov r8, r15
-    mov r9d, F_RANK
-    call gtext
-    mov ecx, 33
-    mov edx, -1
-    mov r8d, r13d
-    mov r9d, F_SUIT
-    call gglyph
-    mov ecx, 0
-    mov edx, -64
-    mov r8d, r13d
-    mov r9d, F_BIGSUIT
-    call gglyph
-    LEAVE
-
-draw_back:                             # dos de carte
-    ENTER
-    mov ecx, C_SHADOW
-    mov edx, C_SHADOW
-    call set_cols
-    mov dword ptr [rip+g_rad], 12
-    mov ecx, -46
-    mov edx, -66
-    mov r8d, 100
-    mov r9d, 140
-    call rrect
-    mov ecx, C_IVORY
-    mov edx, C_CARDLN
-    call set_cols
-    mov dword ptr [rip+g_rad], 12
-    mov ecx, -50
-    mov edx, -70
-    mov r8d, 100
-    mov r9d, 140
-    call rrect
-    mov ecx, C_BACK0
-    mov edx, C_BACK1
-    call set_cols
-    mov dword ptr [rip+g_rad], 8
-    mov ecx, -42
-    mov edx, -62
-    mov r8d, 84
-    mov r9d, 124
-    call rrect
-    mov ecx, C_BACK1
-    mov edx, C_BACK1
-    call set_cols
-    mov dword ptr [rip+g_rad], 4
-    mov ecx, -30
-    mov edx, -48
-    mov r8d, 60
-    mov r9d, 96
-    call rrect
-    mov ecx, C_BACK0
-    mov edx, C_BACK0
-    call set_cols
-    mov ecx, 0
-    mov edx, 0
-    mov r8d, 20
-    mov r9d, 30
-    call ellipse
     LEAVE
 
 # ---------- réduction 2x2 : grand tampon -> petit tampon ----------

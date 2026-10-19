@@ -24,7 +24,7 @@ draw_talon:
     mulsd xmm1, qword ptr [rip+k_c05]
     movsd xmm2, qword ptr [rip+k_c352]
     addsd xmm1, xmm2
-    movsd xmm2, qword ptr [rip+k_c085]
+    movsd xmm2, qword ptr [rip+k_c095]
     xorpd xmm3, xmm3
     call set_xf
     call draw_back
@@ -57,7 +57,7 @@ draw_talon:
     mov qword ptr [rip+g_sq], rax
     movsd xmm0, qword ptr [rip+k_c550]
     movsd xmm1, qword ptr [rip+k_c352]
-    movsd xmm2, qword ptr [rip+k_c09]
+    movsd xmm2, qword ptr [rip+k_c10]
     movsd xmm3, qword ptr [rip+k_c05b]
     call set_xf
     mov ecx, dword ptr [rip+g_turned]
@@ -157,22 +157,18 @@ draw_opp_hands:
 .Ldo_c:
     cmp r15d, r14d
     jge .Ldo_next
-    lea eax, [r14+r14]
-    sub eax, 2
-    imul eax, eax, 6                        # (n-1) * 12 pour les côtés
+    mov esi, 24                             # pas entre les dos : 24 sur les côtés, 30 en haut
     cmp r13d, 2
     jne 1f
-    lea eax, [r14+r14]
-    sub eax, 2
-    imul eax, eax, 13                       # (n-1) * 26 / 2 pour le haut
-1:  mov ebx, eax                            # demi-longueur
-    lea eax, [r15+r15]
-    imul eax, eax, 11                       # i * 22
-    cmp r13d, 2
-    jne 2f
-    lea eax, [r15+r15]
-    imul eax, eax, 13                       # i * 26
-2:  sub eax, ebx
+    mov esi, 30
+1:  mov eax, r14d                           # position = i * pas - (n - 1) * pas / 2
+    dec eax
+    imul eax, esi
+    shr eax, 1
+    mov ebx, eax
+    mov eax, r15d
+    imul eax, esi
+    sub eax, ebx
     cmp r13d, 2
     je 3f
     lea rdx, [rip+t_hy]
@@ -193,7 +189,7 @@ draw_opp_hands:
     xorpd xmm3, xmm3
 4:  mov rax, qword ptr [rip+k_one]
     mov qword ptr [rip+g_sq], rax
-    movsd xmm2, qword ptr [rip+k_c055]
+    movsd xmm2, qword ptr [rip+k_c062]
     call set_xf
     call draw_back
     inc r15d
@@ -222,31 +218,39 @@ draw_tricks:
     je .Ldt_next
     mov ecx, r12d
     call disp_pos
-    mov r14d, eax
-    lea rax, [rip+g_ast0]                   # progression de l'animation
-    mov eax, dword ptr [rip+g_now]
+    mov r14d, eax                           # position d'affichage
+    mov eax, dword ptr [rip+g_now]          # t : progression du vol, 0..1 sur 420 ms
     lea rdx, [rip+g_ast0]
     sub eax, dword ptr [rdx+r12*4]
     cvtsi2sd xmm4, eax
-    divsd xmm4, qword ptr [rip+k_d280]
+    divsd xmm4, qword ptr [rip+k_d420]
     xorpd xmm5, xmm5
     maxsd xmm4, xmm5
     minsd xmm4, qword ptr [rip+k_one]
-    movsd xmm5, qword ptr [rip+k_one]
+    movsd qword ptr [rsp+96], xmm4
+    movsd xmm5, qword ptr [rip+k_one]       # e = 1 - (1 - t)^3 : arrivée en décélérant
     subsd xmm5, xmm4
-    mulsd xmm5, xmm5
-    movsd xmm6, qword ptr [rip+k_one]
-    subsd xmm6, xmm5                        # e
-    movsd qword ptr [rsp+96], xmm6
+    movapd xmm6, xmm5
+    mulsd xmm6, xmm5
+    mulsd xmm6, xmm5
+    movsd xmm7, qword ptr [rip+k_one]
+    subsd xmm7, xmm6
+    movsd qword ptr [rsp+104], xmm7
+    movapd xmm0, xmm4                       # sin(pi t) : hauteur du vol
+    mulsd xmm0, qword ptr [rip+k_pi]
+    call sincos_d
+    movsd qword ptr [rsp+112], xmm0
     lea rax, [rip+t_tx]
     cvtsi2sd xmm0, dword ptr [rax+r14*4]
     lea rax, [rip+t_ty]
     cvtsi2sd xmm1, dword ptr [rax+r14*4]
-    movsd qword ptr [rsp+104], xmm0         # arrivée
-    movsd qword ptr [rsp+112], xmm1
+    movsd qword ptr [rsp+120], xmm0         # arrivée
+    movsd qword ptr [rsp+128], xmm1
+    movsd xmm0, qword ptr [rip+k_one]
+    movsd qword ptr [rsp+136], xmm0         # facteur d'échelle de la collecte
     cmp dword ptr [rip+g_collect], 0
     je 2f
-    call trick_best                         # le pli glisse vers son gagnant
+    call trick_best                         # le pli glisse vers son gagnant en rétrécissant un peu
     mov ecx, eax
     call disp_pos
     mov ebx, eax
@@ -257,48 +261,93 @@ draw_tricks:
     xorpd xmm5, xmm5
     maxsd xmm4, xmm5
     minsd xmm4, qword ptr [rip+k_one]
+    mulsd xmm4, xmm4                        # accélère
     lea rax, [rip+t_hx]
     cvtsi2sd xmm0, dword ptr [rax+rbx*4]
-    subsd xmm0, qword ptr [rsp+104]
+    subsd xmm0, qword ptr [rsp+120]
     mulsd xmm0, xmm4
-    addsd xmm0, qword ptr [rsp+104]
-    movsd qword ptr [rsp+104], xmm0
+    addsd xmm0, qword ptr [rsp+120]
+    movsd qword ptr [rsp+120], xmm0
     lea rax, [rip+t_hy]
     cvtsi2sd xmm1, dword ptr [rax+rbx*4]
-    subsd xmm1, qword ptr [rsp+112]
+    subsd xmm1, qword ptr [rsp+128]
     mulsd xmm1, xmm4
-    addsd xmm1, qword ptr [rsp+112]
-    movsd qword ptr [rsp+112], xmm1
-2:  lea rax, [rip+g_asx]                    # position = départ + (arrivée - départ) * e
+    addsd xmm1, qword ptr [rsp+128]
+    movsd qword ptr [rsp+128], xmm1
+    movsd xmm0, qword ptr [rip+k_c03]
+    mulsd xmm0, xmm4
+    movsd xmm1, qword ptr [rip+k_one]
+    subsd xmm1, xmm0
+    movsd qword ptr [rsp+136], xmm1
+2:  lea rax, [rip+g_asx]                    # position = départ + (arrivée - départ) * e, moins la hauteur du vol
     cvtsi2sd xmm0, dword ptr [rax+r12*4]
     lea rax, [rip+g_asy]
     cvtsi2sd xmm1, dword ptr [rax+r12*4]
-    movsd xmm6, qword ptr [rsp+96]
-    movsd xmm2, qword ptr [rsp+104]
+    movsd xmm6, qword ptr [rsp+104]
+    movsd xmm2, qword ptr [rsp+120]
     subsd xmm2, xmm0
     mulsd xmm2, xmm6
     addsd xmm0, xmm2
-    movsd xmm3, qword ptr [rsp+112]
+    movsd xmm3, qword ptr [rsp+128]
     subsd xmm3, xmm1
     mulsd xmm3, xmm6
     addsd xmm1, xmm3
-    movsd xmm2, qword ptr [rip+k_c055]      # échelle : 0.55 (bots) ou 0.9 (main) -> 0.9
+    movsd qword ptr [rsp+144], xmm0
+    movsd qword ptr [rsp+152], xmm1         # y au sol (sans la hauteur)
+    movsd xmm0, qword ptr [rsp+112]         # ombre portée au sol pendant le vol
+    comisd xmm0, qword ptr [rip+k_c002]
+    jbe 4f
+    call xf_reset
+    mov ecx, C_SHFLY
+    mov edx, C_SHFLY
+    call set_cols
+    movsd xmm0, qword ptr [rsp+112]
+    mulsd xmm0, qword ptr [rip+k_c34]
+    addsd xmm0, qword ptr [rip+k_c30]
+    cvtsd2si r8d, xmm0                      # rx = 30 + 34 sin
+    movsd xmm1, qword ptr [rsp+152]
+    addsd xmm1, qword ptr [rip+k_c8]
+    cvtsd2si edx, xmm1
+    movsd xmm0, qword ptr [rsp+144]
+    addsd xmm0, qword ptr [rip+k_c8]
+    cvtsd2si ecx, xmm0
+    mov r9d, r8d
+    shr r9d, 1
+    mov eax, r9d
+    shr eax, 2
+    add r9d, eax
+    call ellipse
+4:  movsd xmm4, qword ptr [rsp+112]         # y = sol - 64 sin(pi t)
+    mulsd xmm4, qword ptr [rip+k_lift]
+    movsd xmm1, qword ptr [rsp+152]
+    subsd xmm1, xmm4
+    movsd xmm0, qword ptr [rsp+144]
+    movsd xmm6, qword ptr [rsp+104]
+    movsd xmm2, qword ptr [rip+k_c062]      # échelle de départ : 0.62 (bots) ou celle de la main
     test r14d, r14d
     jnz 3f
-    movsd xmm2, qword ptr [rip+k_c09]
-3:  movsd xmm4, qword ptr [rip+k_c09]
-    subsd xmm4, xmm2
-    mulsd xmm4, xmm6
-    addsd xmm2, xmm4
+    movsd xmm2, qword ptr [rip+k_chand]
+3:  movsd xmm3, qword ptr [rip+k_c10]
+    subsd xmm3, xmm2
+    mulsd xmm3, xmm6
+    addsd xmm2, xmm3                        # échelle -> 1.0
+    movsd xmm3, qword ptr [rsp+112]
+    mulsd xmm3, qword ptr [rip+k_c014]
+    addsd xmm2, xmm3                        # la carte grossit en volant (vers le joueur)
+    mulsd xmm2, qword ptr [rsp+136]
     movsd xmm4, qword ptr [rip+k_ground]    # écrasement : 1 -> 0.62
     movsd xmm5, qword ptr [rip+k_one]
     subsd xmm4, xmm5
     mulsd xmm4, xmm6
     addsd xmm5, xmm4
     movsd qword ptr [rip+g_sq], xmm5
-    lea rax, [rip+t_ang]
+    lea rax, [rip+t_ang]                    # tourne en vol : de 5 x l'angle final à l'angle final
     movsd xmm3, qword ptr [rax+r14*8]
-    mulsd xmm3, xmm6
+    movsd xmm4, qword ptr [rip+k_c5]
+    movsd xmm5, qword ptr [rip+k_c4]
+    mulsd xmm5, xmm6
+    subsd xmm4, xmm5
+    mulsd xmm3, xmm4
     call set_xf
     mov ecx, r13d
     call draw_card
@@ -315,9 +364,9 @@ hand_hit:                                   # (g_mx, g_my) -> eax = indice de la
     lea rax, [rip+g_hn]
     mov r12d, dword ptr [rax+rcx*4]
     mov eax, dword ptr [rip+g_my]
-    cmp eax, 616
+    cmp eax, 610
     jl .Lhh_none
-    cmp eax, 770
+    cmp eax, 764
     jg .Lhh_none
     mov r13d, r12d
 .Lhh_l:
@@ -328,9 +377,9 @@ hand_hit:                                   # (g_mx, g_my) -> eax = indice de la
     call hand_cx
     mov edx, dword ptr [rip+g_mx]
     sub edx, eax
-    add edx, 45
+    add edx, 52
     js .Lhh_l
-    cmp edx, 90
+    cmp edx, 104
     jg .Lhh_l
     mov eax, r13d
     LEAVE
@@ -360,7 +409,7 @@ draw_my_hand:
     mov edx, r12d
     call hand_cx
     cvtsi2sd xmm0, eax
-    mov eax, 692
+    mov eax, 686
     cmp r13d, dword ptr [rip+g_hover]
     jne 2f
     bt r14d, r13d
@@ -372,7 +421,7 @@ draw_my_hand:
 3:  cvtsi2sd xmm1, eax
     mov rax, qword ptr [rip+k_one]
     mov qword ptr [rip+g_sq], rax
-    movsd xmm2, qword ptr [rip+k_c09]
+    movsd xmm2, qword ptr [rip+k_chand]
     xorpd xmm3, xmm3
     movsd qword ptr [rsp+96], xmm0
     movsd qword ptr [rsp+104], xmm1
@@ -394,7 +443,7 @@ draw_my_hand:
     call rrect
     movsd xmm0, qword ptr [rsp+96]
     movsd xmm1, qword ptr [rsp+104]
-    movsd xmm2, qword ptr [rip+k_c09]
+    movsd xmm2, qword ptr [rip+k_chand]
     xorpd xmm3, xmm3
 5:  call set_xf
     lea rax, [rip+g_hand]
@@ -933,6 +982,11 @@ render_scene:
     ENTER
     call xf_reset
     call draw_table
+    cmp dword ptr [rip+g_gallery], 0
+    je 1f
+    call draw_gallery
+    LEAVE
+1:
     call draw_talon
     call draw_labels
     call draw_opp_hands
@@ -1155,3 +1209,38 @@ draw_netpanel:
     call gtext
 .Ldn_end:
     LEAVE
+
+.text
+draw_gallery:                               # touche G : les 32 cartes et le dos (contrôle du dessin)
+    ENTER
+    mov rax, qword ptr [rip+k_one]
+    mov qword ptr [rip+g_sq], rax
+    mov dword ptr [rip+g_dim], 0
+    xor r12d, r12d
+1:  cmp r12d, 33
+    jge 9f
+    mov eax, r12d
+    and eax, 7
+    imul eax, eax, 126
+    add eax, 118
+    cvtsi2sd xmm0, eax
+    mov eax, r12d
+    shr eax, 3
+    imul eax, eax, 150
+    add eax, 100
+    cvtsi2sd xmm1, eax
+    movsd xmm2, qword ptr [rip+k_c09]
+    xorpd xmm3, xmm3
+    call set_xf
+    cmp r12d, 32
+    je 2f
+    mov ecx, r12d
+    call draw_card
+    jmp 3f
+2:  call draw_back
+3:  inc r12d
+    jmp 1b
+9:  call xf_reset
+    LEAVE
+.data
+g_gallery:  .long 0

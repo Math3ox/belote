@@ -86,6 +86,7 @@ find_sim:
     ret
 
 .include "gfx.s"
+.include "cards.s"
 .include "game.s"
 .include "ai.s"
 .include "mc.s"

@@ -13,6 +13,23 @@ SHOT = os.path.join(HERE, 'belote_shot.png')
 TITLE = 'Belote - jeu du bistro en 3D isométrique'
 
 
+def own_window(pid):
+    """Fenêtre principale du processus lancé (jamais celle d'un jeu déjà ouvert par l'utilisateur)."""
+    found = []
+    PROC = ctypes.WINFUNCTYPE(ctypes.c_bool, ctypes.c_void_p, ctypes.c_void_p)
+
+    def cb(h, _):
+        owner = ctypes.c_ulong()
+        user32.GetWindowThreadProcessId(ctypes.c_void_p(h), ctypes.byref(owner))
+        buf = ctypes.create_unicode_buffer(200)
+        user32.GetWindowTextW(ctypes.c_void_p(h), buf, 200)
+        if owner.value == pid and buf.value == TITLE and user32.IsWindowVisible(ctypes.c_void_p(h)):
+            found.append(h)
+        return True
+    user32.EnumWindows(PROC(cb), 0)
+    return found[0] if found else 0
+
+
 def key(hwnd, vk):
     # la fenêtre lit le code de touche physique (scan code) dans lParam
     sc = user32.MapVirtualKeyW(vk, 0)
@@ -41,7 +58,7 @@ def main():
     p = subprocess.Popen([EXE], cwd=HERE)
     hwnd = 0
     for _ in range(80):
-        hwnd = user32.FindWindowW(None, TITLE)
+        hwnd = own_window(p.pid)
         if hwnd:
             break
         time.sleep(0.1)
@@ -56,7 +73,7 @@ def main():
             key(hwnd, int(v, 16))
         elif k == 'char':
             for ch in v:
-                user32.PostMessageW(hwnd, 0x102, ord(ch), 0)
+                key(hwnd, user32.VkKeyScanW(ord(ch)) & 0xFF)  # touche réelle : la fenêtre en déduit le caractère
                 time.sleep(0.05)
         elif k == 'shot':
             capture(hwnd, v)

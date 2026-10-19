@@ -1,10 +1,11 @@
 //! Dessin des cartes, design « bistrot classique » : face ivoire, double filet, indices en serif aux coins,
 //! points disposés comme sur un vrai jeu, figures dans un cadre avec couronnes ; dos bordeaux à losanges
-//! dorés et médaillon. Chaque carte est dessinée une fois dans une texture (anticrénelée), puis posée
-//! avec n'importe quelle rotation ou perspective. Repère canonique : 100 x 140 centré sur l'origine.
+//! dorés et médaillon. Chaque carte est dessinée une fois dans une petite image (à la taille de l'écran),
+//! puis posée avec n'importe quelle rotation ou perspective. Repère canonique : 100 x 140 centré sur l'origine.
 
-use crate::gfx::{rgb, Align, Face, FontFile, Gfx, Xf};
-use macroquad::prelude::*;
+use crate::gfx::{rgb, Align, Color, Face, FontFile, Gfx, Glyphs, Xf};
+use std::cell::RefCell;
+use tiny_skia::Pixmap;
 
 const C_IVORY: Color = rgb(250, 247, 238);
 const C_SHADOW: Color = rgb(8, 52, 36);
@@ -45,12 +46,11 @@ pub fn is_red(suit: usize) -> bool {
     suit == 1 || suit == 2
 }
 
-/// Zone de la texture dans le repère de la carte (avec l'ombre portée).
+/// Zone de l'image dans le repère de la carte (avec l'ombre portée).
 pub const X0: f32 = -54.0;
 pub const Y0: f32 = -74.0;
 pub const X1: f32 = 58.0;
 pub const Y1: f32 = 78.0;
-const TS: f32 = 2.5; // pixels de texture par unité
 
 pub struct CardFonts {
     pub serif: Face,
@@ -136,49 +136,47 @@ fn draw_back(g: &Gfx, f: &CardFonts) {
     g.text(SUIT_GLYPHS[1], 0., -17., &f.suit, C_GOLDF, Align::Center);
 }
 
-/// Les 32 faces et le dos, dessinés dans des textures.
+/// Les 32 faces et le dos, dessinés dans des images à la taille de l'écran.
 pub struct Deck {
-    faces: Vec<Texture2D>,
-    back: Texture2D,
-    /// les cibles de rendu doivent vivre tant que le dessin n'est pas exécuté (fin de l'image)
-    _targets: Vec<RenderTarget>,
-    /// les textures rendues sont à l'envers selon la plateforme graphique
-    flip: bool,
+    faces: Vec<Pixmap>,
+    back: Pixmap,
+    /// pixels d'image par unité de la carte
+    ppu: f32,
 }
 
-fn render(f: &CardFonts, card: Option<usize>) -> RenderTarget {
-    let (w, h) = (((X1 - X0) * TS) as u32, ((Y1 - Y0) * TS) as u32);
-    let rt = render_target_msaa(w, h);
-    rt.texture.set_filter(FilterMode::Linear);
-    let mut cam = Camera2D::from_display_rect(Rect::new(0., 0., w as f32, h as f32));
-    cam.render_target = Some(rt.clone());
-    set_camera(&cam);
-    clear_background(Color::new(C_SHADOW.r, C_SHADOW.g, C_SHADOW.b, 0.0));
-    let g = Gfx { sc: TS, ox: -X0 * TS, oy: -Y0 * TS };
+fn render(f: &CardFonts, glyphs: &RefCell<Glyphs>, card: Option<usize>, ppu: f32) -> Pixmap {
+    let (w, h) = (((X1 - X0) * ppu).ceil() as u32, ((Y1 - Y0) * ppu).ceil() as u32);
+    let mut pm = Pixmap::new(w.max(1), h.max(1)).unwrap();
+    let g = Gfx::new(&mut pm, glyphs, ppu, -X0 * ppu, -Y0 * ppu);
     match card {
         Some(c) => draw_face(&g, f, c),
         None => draw_back(&g, f),
     }
-    set_default_camera();
-    rt
+    drop(g);
+    pm
 }
 
 impl Deck {
-    pub fn new(f: &CardFonts) -> Deck {
-        let mut targets: Vec<RenderTarget> = (0..32).map(|c| render(f, Some(c))).collect();
-        targets.push(render(f, None));
-        let faces = targets[..32].iter().map(|rt| rt.texture.clone()).collect();
-        let back = targets[32].texture.clone();
-        Deck { faces, back, _targets: targets, flip: true }
+    /// `ppu` : pixels par unité (échelle de la fenêtre) ; les cartes de la main sont posées environ 1:1.
+    pub fn new(f: &CardFonts, glyphs: &RefCell<Glyphs>, ppu: f32) -> Deck {
+        let faces = (0..32).map(|c| render(f, glyphs, Some(c), ppu)).collect();
+        let back = render(f, glyphs, None, ppu);
+        Deck { faces, back, ppu }
+    }
+
+    pub fn ppu(&self) -> f32 {
+        self.ppu
     }
 
     /// Pose une carte (None = dos) avec la transformation xf ; dim = carte grisée (injouable).
     pub fn draw(&self, g: &Gfx, xf: &Xf, card: Option<usize>, dim: bool) {
-        let tex = match card {
+        let img = match card {
             Some(c) => &self.faces[c],
             None => &self.back,
         };
-        let tint = if dim { Color::new(0.72, 0.72, 0.70, 1.0) } else { WHITE };
-        g.quad(xf, tex, X0, Y0, X1, Y1, tint, self.flip);
+        g.image(xf, img, X0, Y0, self.ppu);
+        if dim {
+            g.rrect(xf, -50., -70., 100., 140., 12., Some(Color::new(0.0, 0.0, 0.0, 0.26)), None);
+        }
     }
 }

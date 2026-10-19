@@ -4,9 +4,8 @@
 
 use crate::cards::{is_red, CardFonts, Deck, SUIT_GLYPHS};
 use crate::engine::*;
-use crate::gfx::{rgb, Align, Face, FontFile, Gfx, Xf, WW};
+use crate::gfx::{rgb, Align, Color, Face, FontFile, Gfx, Xf, WW};
 use crate::table::{hand_cx, Table, HX, HY, LEVEL_NAMES, SUIT_NAMES};
-use macroquad::prelude::*;
 
 const C_BG: Color = rgb(18, 22, 29);
 const C_WOOD: Color = rgb(128, 84, 44);
@@ -150,7 +149,8 @@ pub fn hand_hit(t: &Table, x: f32, y: f32) -> Option<usize> {
 
 /// Ce que l'interface doit afficher en plus de la partie.
 pub struct Overlay<'a> {
-    pub gallery: bool,
+    /// panneau « force des cartes » (touche F)
+    pub strength: bool,
     pub hover: Option<usize>,
     pub mouse: (f32, f32),
     /// panneau du jeu en ligne : (titre, lignes) ; None = rien
@@ -158,13 +158,13 @@ pub struct Overlay<'a> {
     pub optline: String,
 }
 
-pub struct Scene<'a> {
-    g: Gfx,
+pub struct Scene<'a, 'b> {
+    g: &'a Gfx<'b>,
     f: &'a Fonts,
     deck: &'a Deck,
 }
 
-impl Scene<'_> {
+impl Scene<'_, '_> {
     fn text(&self, s: &str, x: f32, y: f32, f: &Face, c: Color, al: Align) {
         self.g.text(s, x, y, f, c, al);
     }
@@ -310,13 +310,13 @@ impl Scene<'_> {
         let g = &self.g;
         let id = Xf::ID;
         let f = self.f;
-        g.rrect(&id, 14., 12., 262., 96., 14., Some(C_PANEL), Some(C_PANELLN));
+        g.rrect(&id, 14., 12., 310., 96., 14., Some(C_PANEL), Some(C_PANELLN));
         let us = t.me & 1;
         let two = t.np() == 2;
         self.text(if two { "TOI" } else { "NOUS" }, 30., 20., &f.med, C_PLAYER, Align::Left);
         self.text(if two { "BOT" } else { "EUX" }, 30., 54., &f.med, C_ENEMY, Align::Left);
-        self.text(&t.e.score[us].to_string(), 262., 20., &f.med, C_WHITE, Align::Right);
-        self.text(&t.e.score[us ^ 1].to_string(), 262., 54., &f.med, C_WHITE, Align::Right);
+        self.text(&t.e.score[us].to_string(), 308., 20., &f.med, C_WHITE, Align::Right);
+        self.text(&t.e.score[us ^ 1].to_string(), 308., 54., &f.med, C_WHITE, Align::Right);
         let obj = format!("Objectif {}   -   victoires {} / défaites {}", t.e.target, t.wins[0], t.wins[1]);
         self.text(&obj, 30., 88., &f.small, C_TXTDIM, Align::Left);
         g.rrect(&id, 824., 12., 262., 96., 14., Some(C_PANEL), Some(C_PANELLN));
@@ -433,6 +433,55 @@ impl Scene<'_> {
         }
     }
 
+    /// Touche F : ordre de force et valeur des cartes, à l'atout et hors atout.
+    fn strength(&self, t: &Table) {
+        const ORDER_T: [usize; 8] = [4, 2, 7, 3, 6, 5, 1, 0]; // V 9 A 10 R D 8 7
+        const ORDER_P: [usize; 8] = [7, 3, 6, 5, 4, 2, 1, 0]; // A 10 R D V 9 8 7
+        const PTS_T: [i32; 8] = [0, 0, 14, 10, 20, 3, 4, 11];
+        const PTS_P: [i32; 8] = [0, 0, 0, 10, 2, 3, 4, 11];
+        let f = self.f;
+        let gs = &t.e.gs;
+        // couleur d'atout : celle de la donne, sinon celle de la retourne ; une autre couleur pour « hors atout »
+        let trump = if gs.trump >= 0 { gs.trump as usize } else { (gs.turned >> 3) as usize };
+        let plain = (trump + 1) % 4;
+        self.g.rrect(&Xf::ID, 130., 96., 840., 600., 20., Some(C_OVER), Some(C_PANELLN));
+        self.text("FORCE DES CARTES", 550., 106., &f.title, C_GOLD, Align::Center);
+        self.text("de la plus forte (à gauche) à la plus faible", 550., 162., &f.small, C_TXTDIM, Align::Center);
+        let rows = [
+            (format!("À l'atout ({})", SUIT_NAMES[trump]), trump, ORDER_T, PTS_T, 192.0),
+            (format!("Hors atout (ex. {})", SUIT_NAMES[plain]), plain, ORDER_P, PTS_P, 412.0),
+        ];
+        for (title, suit, order, pts, y) in rows {
+            self.text(&title, 170., y, &f.med, C_WHITE, Align::Left);
+            for (k, &r) in order.iter().enumerate() {
+                let x = 205.0 + 98.0 * k as f32;
+                let xf = Xf::place(x as f64, (y + 102.0) as f64, 0.6, 0.0, 1.0);
+                self.deck.draw(&self.g, &xf, Some(suit * 8 + r), false);
+                let p = pts[r];
+                let col = if p > 0 { C_GOLD } else { C_TXTDIM };
+                let label = if p > 1 { format!("{p} pts") } else { format!("{p} pt") };
+                self.text(&label, x, y + 152.0, &f.label, col, Align::Center);
+            }
+        }
+        self.text(
+            "Total : 152 points + 10 de der = 162 par donne.   Belote-rebelote (R + D d'atout) : 20.",
+            550.,
+            622.,
+            &f.small,
+            C_TXT,
+            Align::Center,
+        );
+        self.text(
+            "Annonces : tierce 20, cinquante 50, cent 100 ; carré de valets 200, de 9 150, d'as / 10 / rois / dames 100.",
+            550.,
+            644.,
+            &f.small,
+            C_TXT,
+            Align::Center,
+        );
+        self.text("F, Échap ou clic : fermer", 550., 670., &f.small, C_TXTDIM, Align::Center);
+    }
+
     /// Touche G : les 32 cartes et le dos.
     fn gallery(&self) {
         for i in 0..33 {
@@ -446,7 +495,7 @@ impl Scene<'_> {
 pub fn optline(t: &Table) -> String {
     let yn = |b: bool| if b { "oui" } else { "non" };
     format!(
-        "J: {} joueurs   L: niveau {}   A: annonces {}   H: aide {}   F11: plein écran   N: en ligne   Echap: quitter",
+        "J: {} joueurs   L: niveau {}   A: annonces {}   H: aide {}   F: force des cartes   F11: plein écran   N: en ligne   Echap: quitter",
         t.np(),
         LEVEL_NAMES[t.botlvl as usize],
         yn(t.e.optann != 0),
@@ -454,18 +503,36 @@ pub fn optline(t: &Table) -> String {
     )
 }
 
-/// Dessine toute l'image.
-pub fn draw(t: &Table, g: Gfx, f: &Fonts, deck: &Deck, ov: &Overlay) {
-    clear_background(BLACK);
+/// Décor fixe (mis en cache) : la table.
+pub fn background(g: &Gfx, f: &Fonts, deck: &Deck) {
+    Scene { g, f, deck }.table();
+}
+
+/// Galerie des cartes (touche G), sur le décor.
+pub fn gallery(g: &Gfx, f: &Fonts, deck: &Deck) {
+    Scene { g, f, deck }.gallery();
+}
+
+/// Couche fixe tant que l'état ne change pas (talon, étiquettes, mains adverses) : mise en cache.
+pub fn draw_under(t: &Table, g: &Gfx, f: &Fonts, deck: &Deck) {
     let s = Scene { g, f, deck };
-    s.table();
-    if ov.gallery {
-        s.gallery();
-        return;
-    }
     s.talon(t);
     s.labels(t);
     s.opp_hands(t);
+}
+
+/// Empreinte de la couche fixe.
+pub fn under_signature(t: &Table) -> u64 {
+    use std::hash::{Hash, Hasher};
+    let gs = &t.e.gs;
+    let mut h = std::collections::hash_map::DefaultHasher::new();
+    (gs.phase, gs.turn, gs.hn, gs.dpos, gs.turned, t.e.dealer, t.e.np, t.me, t.e.lvl).hash(&mut h);
+    h.finish()
+}
+
+/// Tout ce qui bouge ou change souvent, par-dessus la couche fixe.
+pub fn draw_over(t: &Table, g: &Gfx, f: &Fonts, deck: &Deck, ov: &Overlay) {
+    let s = Scene { g, f, deck };
     s.tricks(t);
     s.my_hand(t, ov.hover);
     s.panels(t);
@@ -474,6 +541,9 @@ pub fn draw(t: &Table, g: Gfx, f: &Fonts, deck: &Deck, ov: &Overlay) {
     s.buttons(t, ov.mouse);
     s.text(&t.message(), 550., 764., &f.label, C_TXT, Align::Center);
     s.text(&ov.optline, 550., 782., &f.small, C_TXTDIM, Align::Center);
+    if ov.strength {
+        s.strength(t);
+    }
     if let Some((title, lines, menu)) = ov.net {
         s.netpanel(title, lines, menu);
     }

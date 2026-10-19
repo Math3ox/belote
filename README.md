@@ -1,8 +1,11 @@
 # Belote en 3D isométrique (Rust, Windows / Linux / macOS)
 
 Belote contre des bots (ou en ligne avec des amis) : table ronde en perspective isométrique, cartes posées sur le
-tapis avec rotation et animation. Même esprit que le jeu du 421. Écrit en Rust avec
-[macroquad](https://github.com/not-fl3/macroquad) (OpenGL, anticrénelage 4x) : un seul code pour Windows, Linux et macOS.
+tapis avec rotation et animation. Même esprit que le jeu du 421. Écrit en Rust.
+Le dessin est fait **entièrement par le processeur, sans carte graphique ni OpenGL** (tiny-skia pour les formes
+anticrénelées, ab_glyph pour le texte, winit + softbuffer pour la fenêtre : affichage par GDI sous Windows).
+Comme dans la version assembleur, le décor est calculé une fois puis gardé en cache, seul ce qui bouge est
+redessiné, et rien n'est recalculé quand rien ne bouge. Un seul code pour Windows, Linux et macOS. Environ 35 Mo de RAM.
 
 ## Lancer
 Double-clic sur `belote.exe` (aucune installation, uniquement des DLL de Windows 10/11). Sous Linux : `./belote`.
@@ -43,9 +46,11 @@ vide, les obligations de la belote classique s'appliquent. Même décompte (162 
 ## Jouer
 - **Enchères** : boutons PRENDRE / PASSER (1er tour), couleur / PASSER (2e tour).
 - **Jeu** : clique sur une carte (les cartes grisées sont injouables). Espace ou Entrée : SUITE à la fin d'une manche.
-- Raccourcis : `J` 4 joueurs / à deux · `L` niveau des bots · `A` annonces · `H` aide · `P` objectif ·
+- Raccourcis : `J` 4 joueurs / à deux · `L` niveau des bots · `A` annonces · `H` aide · `P` objectif · `F` force des cartes ·
   `F11` plein écran · `F12` capture `belote_shot.png` · `N` en ligne · `Échap` quitter.
 - `H` (aide) : conseil pour prendre ou passer, et la carte conseillée est surlignée en or pendant le jeu.
+- `F` : **force des cartes** : ordre des cartes de la plus forte à la plus faible et leurs points, à l'atout et hors atout
+  (avec la vraie couleur d'atout de la donne), rappel des annonces et de la belote. `F`, Échap ou un clic le ferme.
 - `G` : galerie des 32 cartes et du dos (contrôle du dessin).
 - `U` : l'ordinateur joue à ta place (démonstration / tests).
 - La fenêtre est redimensionnable (proportions gardées) ; sur un petit écran elle est réduite pour tenir.
@@ -84,11 +89,12 @@ redirection du port TCP **4210** sur la box). Les autres choisissent **R**, tape
 - `python shot.py sortie.png [actions...]` : lance le jeu, envoie touches et clics, capture l'image (F12).
 
 ## Fichiers
-- `src/main.rs` : fenêtre, clavier, souris, plein écran, boucle principale, `-sim`.
+- `src/main.rs` : le jeu dans sa fenêtre (touches, clics, réglages, couche fixe en cache), `-sim`.
+- `src/shell.rs` : fenêtre et boucle (winit + softbuffer), décor en cache, images seulement quand quelque chose change.
 - `src/engine.rs` : moteur (règles, enchères, annonces, plis, décompte, bots facile / normal, Monte-Carlo, banc d'essai).
 - `src/table.rs` : déroulement autour du moteur (tours des bots, délais, animations, bulles, aide, actions en ligne).
-- `src/draw.rs` : dessin de la scène. `src/cards.rs` : dessin des cartes (design bistrot) dans des textures.
-  `src/gfx.rs` : primitives, transformation affine, textes, polices.
+- `src/draw.rs` : dessin de la scène. `src/cards.rs` : dessin des cartes (design bistrot) dans de petites images.
+  `src/gfx.rs` : dessin processeur (formes anticrénelées, transformations, images, textes) ; commun avec le 421.
 - `src/net.rs` : jeu en ligne (TCP en étoile, trames de 12 octets). `src/cfg.rs` : réglages mémorisés.
 
 La première version (v1.0) était écrite en assembleur x86-64 ; elle reste dans l'historique git.

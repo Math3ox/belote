@@ -61,7 +61,7 @@ impl Fonts {
             "/usr/share/fonts/TTF/DejaVuSans-Bold.ttf",
             "/usr/share/fonts/dejavu-sans-fonts/DejaVuSans-Bold.ttf",
             "/System/Library/Fonts/Supplemental/Arial Bold.ttf",
-        ]);
+        ], "sans-serif:bold");
         let semi = FontFile::load(&[
             "C:\\Windows\\Fonts\\seguisb.ttf",
             "C:\\Windows\\Fonts\\segoeui.ttf",
@@ -69,21 +69,21 @@ impl Fonts {
             "/usr/share/fonts/TTF/DejaVuSans.ttf",
             "/usr/share/fonts/dejavu-sans-fonts/DejaVuSans.ttf",
             "/System/Library/Fonts/Supplemental/Arial.ttf",
-        ]);
+        ], "sans-serif:semibold");
         let sym = FontFile::load(&[
             "C:\\Windows\\Fonts\\seguisym.ttf",
             "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
             "/usr/share/fonts/TTF/DejaVuSans.ttf",
             "/usr/share/fonts/dejavu-sans-fonts/DejaVuSans.ttf",
             "/System/Library/Fonts/Apple Symbols.ttf",
-        ]);
+        ], "sans-serif:charset=2660 2663 2665 2666");
         let serif = FontFile::load(&[
             "C:\\Windows\\Fonts\\georgiab.ttf",
             "/usr/share/fonts/truetype/dejavu/DejaVuSerif-Bold.ttf",
             "/usr/share/fonts/TTF/DejaVuSerif-Bold.ttf",
             "/usr/share/fonts/dejavu-serif-fonts/DejaVuSerif-Bold.ttf",
             "/System/Library/Fonts/Supplemental/Georgia Bold.ttf",
-        ]);
+        ], "serif:bold");
         Fonts {
             title: bold.face(46.0),
             label: bold.face(20.0),
@@ -539,8 +539,8 @@ pub fn draw_over(t: &Table, g: &Gfx, f: &Fonts, deck: &Deck, ov: &Overlay) {
     s.bubbles(t);
     s.overlay(t);
     s.buttons(t, ov.mouse);
-    s.text(&t.message(), 550., 764., &f.label, C_TXT, Align::Center);
-    s.text(&ov.optline, 550., 782., &f.small, C_TXTDIM, Align::Center);
+    s.text(&t.message(), 550., 757., &f.label, C_TXT, Align::Center);
+    s.text(&ov.optline, 550., 780., &f.small, C_TXTDIM, Align::Center);
     if ov.strength {
         s.strength(t);
     }

@@ -104,6 +104,19 @@ fn win_ascent(b: &[u8]) -> Option<f32> {
     (upem > 0.0).then(|| asc / upem)
 }
 
+/// Chemin du fichier de police choisi par fontconfig pour un motif (Linux / BSD).
+#[cfg(all(unix, not(target_os = "macos")))]
+fn fc_match(pattern: &str) -> Option<String> {
+    let out = std::process::Command::new("fc-match").args(["-f", "%{file}", pattern]).output().ok()?;
+    let path = String::from_utf8(out.stdout).ok()?;
+    (out.status.success() && !path.is_empty()).then_some(path)
+}
+
+#[cfg(not(all(unix, not(target_os = "macos"))))]
+fn fc_match(_pattern: &str) -> Option<String> {
+    None
+}
+
 /// Fichier de police (le premier qui existe dans la liste ; lu à la demande, sans prétraitement).
 pub struct FontFile {
     font: Option<(usize, Rc<FontVec>)>,
@@ -111,17 +124,22 @@ pub struct FontFile {
 }
 
 impl FontFile {
-    pub fn load(paths: &[&str]) -> FontFile {
-        for p in paths {
-            if let Ok(bytes) = std::fs::read(p) {
-                let asc = win_ascent(&bytes).unwrap_or(0.95);
-                if let Ok(font) = FontVec::try_from_vec(bytes) {
-                    let id = NEXT_FONT_ID.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-                    return FontFile { font: Some((id, Rc::new(font))), asc };
-                }
-            }
-        }
-        FontFile { font: None, asc: 0.8 }
+    /// `fc` : motif fontconfig (ex. « sans-serif:bold ») demandé à `fc-match` si aucun chemin n'existe
+    /// (sous Linux, les polices installées varient d'une distribution à l'autre).
+    pub fn load(paths: &[&str], fc: &str) -> FontFile {
+        paths
+            .iter()
+            .find_map(|p| Self::open(p))
+            .or_else(|| Self::open(&fc_match(fc)?))
+            .unwrap_or(FontFile { font: None, asc: 0.8 })
+    }
+
+    fn open(path: &str) -> Option<FontFile> {
+        let bytes = std::fs::read(path).ok()?;
+        let asc = win_ascent(&bytes).unwrap_or(0.95);
+        let font = FontVec::try_from_vec(bytes).ok()?;
+        let id = NEXT_FONT_ID.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        Some(FontFile { font: Some((id, Rc::new(font))), asc })
     }
 
     pub fn face(&self, size: f32) -> Face {

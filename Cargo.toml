@@ -1,0 +1,19 @@
+[package]
+name = "belote"
+version = "2.0.0"
+edition = "2021"
+description = "Belote en 3D isometrique (bots, belote a deux, en ligne 2-4 joueurs)"
+
+[[bin]]
+name = "belote"
+path = "src/main.rs"
+
+[dependencies]
+macroquad = { version = "0.4", default-features = false }
+
+[profile.release]
+opt-level = 3
+lto = true
+codegen-units = 1
+panic = "abort"
+strip = true

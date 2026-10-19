@@ -1,85 +1,78 @@
-"""Pilote belote.exe pour les tests : lance, envoie des touches/clics, capture (F12) et convertit en PNG.
+"""Pilote le jeu (target/release/belote.exe) pour les tests : lance, envoie des touches/clics, capture (F12 -> PNG).
+Les réglages de l'utilisateur (belote.cfg à côté de l'exe) ne sont pas touchés : le jeu tourne depuis target/release.
 Usage : python shot.py sortie.png [actions...]
-  actions : wait:<s>  key:<code hex>  click:<x>,<y>  (ex. key:20 wait:0.5 key:7B)"""
-import ctypes, subprocess, sys, time, os, struct, zlib
+  actions : wait:<s>  key:<code hex>  char:<lettres>  click:<x>,<y> (pixels de la fenêtre)  shot:<fichier.png>
+  (ex. char:G wait:1 shot:galerie.png)"""
+import ctypes, os, shutil, subprocess, sys, time
 
 user32 = ctypes.windll.user32
 user32.SetProcessDPIAware()
 HERE = os.path.dirname(os.path.abspath(__file__))
-SHOT = os.path.join(HERE, 'belote_shot.bmp')
+EXE = os.path.join(HERE, 'target', 'release', 'belote.exe')
+SHOT = os.path.join(HERE, 'belote_shot.png')
+TITLE = 'Belote - jeu du bistro en 3D isométrique'
 
 
-def bmp_to_png(src, dst):
-    d = open(src, 'rb').read()
-    off = struct.unpack_from('<I', d, 10)[0]
-    w, h = struct.unpack_from('<ii', d, 18)
-    top_down = h < 0
-    h = abs(h)
-    rows = []
-    for y in range(h):
-        sy = y if top_down else h - 1 - y
-        row = d[off + sy * w * 4: off + (sy + 1) * w * 4]
-        rgb = bytearray(w * 3)
-        rgb[0::3] = row[2::4]
-        rgb[1::3] = row[1::4]
-        rgb[2::3] = row[0::4]
-        rows.append(b'\x00' + bytes(rgb))
-    raw = b''.join(rows)
+def key(hwnd, vk):
+    # la fenêtre lit le code de touche physique (scan code) dans lParam
+    sc = user32.MapVirtualKeyW(vk, 0)
+    user32.PostMessageW(hwnd, 0x100, vk, (sc << 16) | 1)
+    time.sleep(0.05)
+    user32.PostMessageW(hwnd, 0x101, vk, (sc << 16) | 0xC0000001)
 
-    def chunk(t, c):
-        x = struct.pack('>I', len(c)) + t + c
-        return x + struct.pack('>I', zlib.crc32(t + c) & 0xffffffff)
-    png = b'\x89PNG\r\n\x1a\n' + chunk(b'IHDR', struct.pack('>IIBBBBB', w, h, 8, 2, 0, 0, 0)) \
-        + chunk(b'IDAT', zlib.compress(raw, 6)) + chunk(b'IEND', b'')
-    open(dst, 'wb').write(png)
+
+def capture(hwnd, dst):
+    if os.path.exists(SHOT):
+        os.remove(SHOT)
+    key(hwnd, 0x7B)
+    for _ in range(30):
+        time.sleep(0.1)
+        if os.path.exists(SHOT) and os.path.getsize(SHOT) > 0:
+            time.sleep(0.2)
+            shutil.move(SHOT, dst)
+            print('ok', dst)
+            return
+    print('pas de capture', dst)
 
 
 def main():
     out = sys.argv[1]
-    acts = sys.argv[2:] or ['wait:0.8', 'key:7B', 'wait:0.4']
-    if os.path.exists(SHOT):
-        os.remove(SHOT)
-    p = subprocess.Popen([os.path.join(HERE, 'belote.exe')], cwd=HERE)
+    acts = sys.argv[2:] or ['wait:1.0']
+    p = subprocess.Popen([EXE], cwd=HERE)
     hwnd = 0
-    for _ in range(50):
-        hwnd = user32.FindWindowW('BeloteWin', None)
+    for _ in range(80):
+        hwnd = user32.FindWindowW(None, TITLE)
         if hwnd:
             break
         time.sleep(0.1)
     if not hwnd:
         print('fenetre introuvable'); p.kill(); return
+    time.sleep(0.8)
     for a in acts:
         k, v = a.split(':', 1)
         if k == 'wait':
             time.sleep(float(v))
         elif k == 'key':
-            user32.PostMessageW(hwnd, 0x100, int(v, 16), 0)
+            key(hwnd, int(v, 16))
+        elif k == 'char':
+            for ch in v:
+                user32.PostMessageW(hwnd, 0x102, ord(ch), 0)
+                time.sleep(0.05)
         elif k == 'shot':
-            if os.path.exists(SHOT): os.remove(SHOT)
-            user32.PostMessageW(hwnd, 0x100, 0x7B, 0)
-            time.sleep(0.4)
-            if os.path.exists(SHOT): bmp_to_png(SHOT, v); print('ok', v)
-        elif k == 'vals':
-            buf = ctypes.create_unicode_buffer(128)
-            user32.PostMessageW(hwnd, 0x100, 0x44, 0)
-            time.sleep(0.3)
-            user32.GetWindowTextW(hwnd, buf, 128)
-            print('valeurs (joueur x3, bot x3, phase):', buf.value)
+            capture(hwnd, v)
         elif k == 'click':
             x, y = [int(t) for t in v.split(',')]
+            user32.PostMessageW(hwnd, 0x200, 0, (y << 16) | x)
             user32.PostMessageW(hwnd, 0x201, 1, (y << 16) | x)
-    time.sleep(0.3)
-    if p.poll() is None:
-        user32.PostMessageW(hwnd, 0x100, 0x1B, 0)
-        try:
-            p.wait(timeout=3)
-        except Exception:
-            p.kill()
-    if os.path.exists(SHOT):
-        bmp_to_png(SHOT, out)
-        print('ok', out)
-    else:
-        print('pas de capture (plantage ?) code', p.returncode)
+            time.sleep(0.05)
+            user32.PostMessageW(hwnd, 0x202, 0, (y << 16) | x)
+    time.sleep(0.2)
+    capture(hwnd, out)
+    user32.PostMessageW(hwnd, 0x10, 0, 0)
+    try:
+        p.wait(timeout=3)
+    except Exception:
+        p.kill()
 
 
 main()

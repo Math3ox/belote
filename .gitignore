@@ -1,9 +1,8 @@
+/target/
 belote.exe
-belote_shot.bmp
+belote_shot.png
 belote.cfg
 sim.log
 *.png
 *.zip
 __pycache__/
-sim_rs.log
-rust/target/

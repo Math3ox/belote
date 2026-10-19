@@ -1,0 +1,480 @@
+//! Dessin de la scène : table ronde en perspective, mains, plis animés (envoi en arc avec ombre, ramassage),
+//! talon et retourne, étiquettes des joueurs, panneaux de score et d'atout, bulles, bilan de manche,
+//! boutons, messages, panneau du jeu en ligne, galerie des cartes.
+
+use crate::cards::{is_red, CardFonts, Deck, SUIT_GLYPHS};
+use crate::engine::*;
+use crate::gfx::{rgb, Align, Face, FontFile, Gfx, Xf, WW};
+use crate::table::{hand_cx, Table, HX, HY, LEVEL_NAMES, SUIT_NAMES};
+use macroquad::prelude::*;
+
+const C_BG: Color = rgb(18, 22, 29);
+const C_WOOD: Color = rgb(128, 84, 44);
+const C_WOODDK: Color = rgb(78, 48, 24);
+const C_WOODHI: Color = rgb(160, 108, 60);
+const C_IVORY: Color = rgb(250, 247, 238);
+const C_CARDLN: Color = rgb(120, 115, 100);
+const C_BLACK: Color = rgb(26, 26, 32);
+const C_GOLD: Color = rgb(255, 205, 70);
+const C_WHITE: Color = rgb(240, 240, 235);
+const C_SHFLY: Color = rgb(20, 92, 64);
+const C_BTN: Color = rgb(60, 150, 100);
+const C_BTNDK: Color = rgb(30, 90, 60);
+const C_BTNOFF: Color = rgb(70, 74, 84);
+const C_BTNHOV: Color = rgb(160, 224, 160);
+const C_PANEL: Color = rgb(30, 36, 46);
+const C_PANELLN: Color = rgb(80, 90, 106);
+const C_TXT: Color = rgb(220, 226, 232);
+const C_TXTDIM: Color = rgb(140, 150, 162);
+const C_FELTEDGE: Color = rgb(16, 60, 40);
+const C_OVER: Color = rgb(38, 46, 60);
+const C_TURNFILL: Color = rgb(60, 64, 30);
+const C_GOLDDK: Color = rgb(144, 96, 16);
+const C_PLAYER: Color = rgb(96, 200, 255);
+const C_ENEMY: Color = rgb(255, 120, 140);
+const C_TRUMPRED: Color = rgb(255, 120, 100);
+
+const GROUND: f64 = 0.62; // écrasement vertical du plan de la table
+const TX: [f64; 4] = [550.0, 464.0, 550.0, 636.0]; // arrivée de la carte dans le pli
+const TY: [f64; 4] = [402.0, 352.0, 302.0, 352.0];
+const BX: [f32; 4] = [550.0, 215.0, 550.0, 885.0]; // bulles
+const BY: [f32; 4] = [598.0, 345.0, 172.0, 345.0];
+const LX: [f32; 4] = [130.0, 92.0, 550.0, 1008.0]; // étiquettes
+const LY: [f32; 4] = [742.0, 214.0, 24.0, 214.0];
+const ANG: [f64; 4] = [-0.06, 0.09, 0.04, -0.10];
+
+/// Polices de l'interface (tailles en pixels logiques, comme sous GDI).
+pub struct Fonts {
+    title: Face,
+    label: Face,
+    small: Face,
+    btn: Face,
+    med: Face,
+    sym2: Face,
+    pub cards: CardFonts,
+}
+
+impl Fonts {
+    pub fn load() -> Fonts {
+        let bold = FontFile::load(&[
+            "C:\\Windows\\Fonts\\segoeuib.ttf",
+            "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
+            "/usr/share/fonts/TTF/DejaVuSans-Bold.ttf",
+            "/usr/share/fonts/dejavu-sans-fonts/DejaVuSans-Bold.ttf",
+            "/System/Library/Fonts/Supplemental/Arial Bold.ttf",
+        ]);
+        let semi = FontFile::load(&[
+            "C:\\Windows\\Fonts\\seguisb.ttf",
+            "C:\\Windows\\Fonts\\segoeui.ttf",
+            "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
+            "/usr/share/fonts/TTF/DejaVuSans.ttf",
+            "/usr/share/fonts/dejavu-sans-fonts/DejaVuSans.ttf",
+            "/System/Library/Fonts/Supplemental/Arial.ttf",
+        ]);
+        let sym = FontFile::load(&[
+            "C:\\Windows\\Fonts\\seguisym.ttf",
+            "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
+            "/usr/share/fonts/TTF/DejaVuSans.ttf",
+            "/usr/share/fonts/dejavu-sans-fonts/DejaVuSans.ttf",
+            "/System/Library/Fonts/Apple Symbols.ttf",
+        ]);
+        let serif = FontFile::load(&[
+            "C:\\Windows\\Fonts\\georgiab.ttf",
+            "/usr/share/fonts/truetype/dejavu/DejaVuSerif-Bold.ttf",
+            "/usr/share/fonts/TTF/DejaVuSerif-Bold.ttf",
+            "/usr/share/fonts/dejavu-serif-fonts/DejaVuSerif-Bold.ttf",
+            "/System/Library/Fonts/Supplemental/Georgia Bold.ttf",
+        ]);
+        Fonts {
+            title: bold.face(46.0),
+            label: bold.face(20.0),
+            small: semi.face(15.0),
+            btn: bold.face(22.0),
+            med: bold.face(28.0),
+            sym2: sym.face(50.0),
+            cards: CardFonts::load(&sym, &serif),
+        }
+    }
+}
+
+/// Bouton : position, taille, action, actif.
+#[derive(Clone, Copy, PartialEq)]
+pub enum BtnId {
+    Take,
+    Suit(usize),
+    Pass,
+    Next,
+}
+
+pub struct Btn {
+    pub x: f32,
+    pub y: f32,
+    pub w: f32,
+    pub h: f32,
+    pub id: BtnId,
+    pub active: bool,
+}
+
+impl Btn {
+    pub fn hit(&self, x: f32, y: f32) -> bool {
+        self.active && x >= self.x && x <= self.x + self.w && y >= self.y && y <= self.y + self.h
+    }
+}
+
+/// Boutons de la phase en cours.
+pub fn buttons(t: &Table) -> Vec<Btn> {
+    let mine = t.is_human(t.turn());
+    let b = |x: f32, y: f32, w: f32, h: f32, id: BtnId, active: bool| Btn { x, y, w, h, id, active };
+    match t.phase() {
+        PH_BID1 if mine => vec![b(400., 560., 140., 48., BtnId::Take, true), b(560., 560., 140., 48., BtnId::Pass, true)],
+        PH_BID2 if mine => {
+            let turned = (t.e.gs.turned >> 3) as usize;
+            let mut v: Vec<Btn> =
+                (0..4).map(|k| b(270. + 98. * k as f32, 560., 88., 48., BtnId::Suit(k), k != turned)).collect();
+            v.push(b(676., 560., 130., 48., BtnId::Pass, true));
+            v
+        }
+        PH_ROUNDEND | PH_MATCHEND => vec![b(425., 548., 250., 52., BtnId::Next, true)],
+        _ => vec![],
+    }
+}
+
+/// Indice de la carte de la main du bas sous le point, ou None.
+pub fn hand_hit(t: &Table, x: f32, y: f32) -> Option<usize> {
+    let n = t.e.gs.hn[t.me] as usize;
+    if !(610.0..=764.0).contains(&y) {
+        return None;
+    }
+    (0..n).rev().find(|&i| (x as f64 - hand_cx(i, n)).abs() <= 52.0)
+}
+
+/// Ce que l'interface doit afficher en plus de la partie.
+pub struct Overlay<'a> {
+    pub gallery: bool,
+    pub hover: Option<usize>,
+    pub mouse: (f32, f32),
+    /// panneau du jeu en ligne : (titre, lignes) ; None = rien
+    pub net: Option<(&'a str, [&'a str; 3], bool)>,
+    pub optline: String,
+}
+
+pub struct Scene<'a> {
+    g: Gfx,
+    f: &'a Fonts,
+    deck: &'a Deck,
+}
+
+impl Scene<'_> {
+    fn text(&self, s: &str, x: f32, y: f32, f: &Face, c: Color, al: Align) {
+        self.g.text(s, x, y, f, c, al);
+    }
+
+    fn table(&self) {
+        let g = &self.g;
+        let id = Xf::ID;
+        g.rrect(&id, 0., 0., WW, 800., 0., Some(C_BG), None);
+        let sh = rgb(14, 10, 8);
+        g.ellipse(&id, 550., 392., 520., 282., Some(sh), Some(sh));
+        g.ellipse(&id, 550., 376., 500., 280., Some(C_WOODDK), Some(C_WOODDK));
+        g.ellipse(&id, 550., 352., 500., 280., Some(C_WOOD), Some(C_WOODHI));
+        for k in 0..12i32 {
+            let c = rgb((14 + k * 20 / 11) as u8, (92 + k * 46 / 11) as u8, (62 + k * 32 / 11) as u8);
+            let edge = if k == 0 { C_FELTEDGE } else { c };
+            g.ellipse(&id, 550., 352., (474 - 26 * k) as f32, (258 - 15 * k) as f32, Some(c), Some(edge));
+        }
+    }
+
+    fn talon(&self, t: &Table) {
+        let gs = &t.e.gs;
+        if t.np() == 2 && gs.dpos < 32 {
+            for k in 0..3 {
+                let xf = Xf::place(300.0 - k as f64, 352.0 - 0.5 * k as f64, 0.95, 0.0, GROUND);
+                self.deck.draw(&self.g, &xf, None, false);
+            }
+            self.text(&format!("TALON : {}", 32 - gs.dpos), 300., 398., &self.f.small, C_WHITE, Align::Center);
+        }
+        if gs.phase == PH_BID1 || gs.phase == PH_BID2 {
+            let xf = Xf::place(550.0, 352.0, 1.0, 0.05, GROUND);
+            self.deck.draw(&self.g, &xf, Some(gs.turned as usize), false);
+        }
+    }
+
+    fn labels(&self, t: &Table) {
+        let g = &self.g;
+        let id = Xf::ID;
+        for p in 0..t.np() {
+            let dp = t.disp_pos(p);
+            let (x, y) = (LX[dp], LY[dp]);
+            let mut fill = C_PANEL;
+            let mut edge = if (p ^ t.me) & 1 == 0 { C_PLAYER } else { C_ENEMY };
+            let ph = t.phase();
+            if matches!(ph, PH_BID1 | PH_BID2 | PH_PLAY) && p == t.turn() {
+                edge = C_GOLD;
+                fill = C_TURNFILL;
+            }
+            g.rrect(&id, x - 80., y - 3., 160., 30., 14., Some(fill), Some(edge));
+            self.text(&t.player_name(p), x, y, &self.f.label, C_WHITE, Align::Center);
+            if p as i32 == t.e.dealer {
+                let cx = if dp == 3 { x - 93. } else { x + 93. };
+                g.ellipse(&id, cx, y + 12., 13., 13., Some(C_GOLD), Some(C_GOLDDK));
+                self.text("D", cx, y + 2., &self.f.small, C_BLACK, Align::Center);
+            }
+        }
+    }
+
+    fn opp_hands(&self, t: &Table) {
+        for p in 0..t.np() {
+            let dp = t.disp_pos(p);
+            if dp == 0 {
+                continue;
+            }
+            let n = t.e.gs.hn[p];
+            let step = if dp == 2 { 30.0 } else { 24.0 };
+            for i in 0..n {
+                let off = i as f64 * step - (((n - 1).max(0) as f64 * step) as i64 / 2) as f64;
+                let xf = match dp {
+                    2 => Xf::place(HX[2] + off, HY[2], 0.62, 0.0, 1.0),
+                    1 => Xf::place(HX[1], HY[1] + off, 0.62, std::f64::consts::FRAC_PI_2, 1.0),
+                    _ => Xf::place(HX[3], HY[3] + off, 0.62, -std::f64::consts::FRAC_PI_2, 1.0),
+                };
+                self.deck.draw(&self.g, &xf, None, false);
+            }
+        }
+    }
+
+    /// Cartes du pli : envoi en arc depuis la main, puis ramassage vers le gagnant.
+    fn tricks(&self, t: &Table) {
+        let gs = &t.e.gs;
+        let np = t.np();
+        let collect = if t.collect > 0.0 {
+            let w = t.e.trick_best().0 as usize;
+            let u = ((t.now - t.collect) / 300.0).clamp(0.0, 1.0);
+            Some((t.disp_pos(w), u * u))
+        } else {
+            None
+        };
+        for k in 0..np {
+            let p = (gs.tlead as usize + k) % np;
+            let card = gs.tcard[p];
+            if card == 0xFF {
+                continue;
+            }
+            let dp = t.disp_pos(p);
+            let tt = ((t.now - t.ast0[p]) / 420.0).clamp(0.0, 1.0);
+            let e = 1.0 - (1.0 - tt).powi(3);
+            let h = (std::f64::consts::PI * tt).sin();
+            let (mut ax, mut ay, mut cs) = (TX[dp], TY[dp], 1.0);
+            if let Some((wd, u)) = collect {
+                ax += (HX[wd] - ax) * u;
+                ay += (HY[wd] - ay) * u;
+                cs = 1.0 - 0.3 * u;
+            }
+            let x = t.asx[p] + (ax - t.asx[p]) * e;
+            let yg = t.asy[p] + (ay - t.asy[p]) * e;
+            if h > 0.02 {
+                let rx = (30.0 + 34.0 * h) as i32;
+                let ry = (rx >> 1) + (rx >> 3);
+                self.g.ellipse(&Xf::ID, (x + 8.0) as f32, (yg + 8.0) as f32, rx as f32, ry as f32, Some(C_SHFLY), Some(C_SHFLY));
+            }
+            let s0 = if dp == 0 { 1.04 } else { 0.62 };
+            let scale = (s0 + (1.0 - s0) * e + 0.14 * h) * cs;
+            let sq = 1.0 + (GROUND - 1.0) * e;
+            let ang = ANG[dp] * (5.0 - 4.0 * e);
+            let xf = Xf::place(x, yg - 64.0 * h, scale, ang, sq);
+            self.deck.draw(&self.g, &xf, Some(card as usize), false);
+        }
+    }
+
+    fn my_hand(&self, t: &Table, hover: Option<usize>) {
+        let me = t.me;
+        let n = t.e.gs.hn[me] as usize;
+        let legal = t.my_legal();
+        for i in 0..n {
+            let mut y = 686.0;
+            if hover == Some(i) && legal >> i & 1 == 1 {
+                y -= 18.0;
+            }
+            if t.hint == i as i32 {
+                y -= 14.0;
+            }
+            let xf = Xf::place(hand_cx(i, n), y, 1.04, 0.0, 1.0);
+            if t.hint == i as i32 {
+                self.g.rrect(&xf, -56., -76., 112., 152., 16., Some(C_GOLD), Some(C_GOLD));
+            }
+            let dim = legal >> i & 1 == 0;
+            self.deck.draw(&self.g, &xf, Some(t.e.gs.hand[me][i] as usize), dim);
+        }
+    }
+
+    fn panels(&self, t: &Table) {
+        let g = &self.g;
+        let id = Xf::ID;
+        let f = self.f;
+        g.rrect(&id, 14., 12., 262., 96., 14., Some(C_PANEL), Some(C_PANELLN));
+        let us = t.me & 1;
+        let two = t.np() == 2;
+        self.text(if two { "TOI" } else { "NOUS" }, 30., 20., &f.med, C_PLAYER, Align::Left);
+        self.text(if two { "BOT" } else { "EUX" }, 30., 54., &f.med, C_ENEMY, Align::Left);
+        self.text(&t.e.score[us].to_string(), 262., 20., &f.med, C_WHITE, Align::Right);
+        self.text(&t.e.score[us ^ 1].to_string(), 262., 54., &f.med, C_WHITE, Align::Right);
+        let obj = format!("Objectif {}   -   victoires {} / défaites {}", t.e.target, t.wins[0], t.wins[1]);
+        self.text(&obj, 30., 88., &f.small, C_TXTDIM, Align::Left);
+        g.rrect(&id, 824., 12., 262., 96., 14., Some(C_PANEL), Some(C_PANELLN));
+        self.text("ATOUT", 842., 18., &f.label, C_TXTDIM, Align::Left);
+        let trump = t.e.gs.trump;
+        let (suit, col) = if trump < 0 {
+            ((t.e.gs.turned >> 3) as usize, C_TXTDIM)
+        } else {
+            (trump as usize, if is_red(trump as usize) { C_TRUMPRED } else { C_WHITE })
+        };
+        self.text(SUIT_GLYPHS[suit], 1048., 30., &f.sym2, col, Align::Center);
+        if trump >= 0 {
+            let s = format!("pris par {}", t.player_name(t.e.gs.taker as usize));
+            self.text(&s, 842., 54., &f.small, C_TXT, Align::Left);
+        }
+    }
+
+    fn bubbles(&self, t: &Table) {
+        for p in 0..t.np() {
+            let Some((txt, end)) = &t.bub[p] else { continue };
+            if *end < t.now {
+                continue;
+            }
+            let dp = t.disp_pos(p);
+            let w = txt.chars().count() as f32 * 10.0 + 34.0;
+            let (x, y) = (BX[dp], BY[dp]);
+            self.g.rrect(&Xf::ID, x - w / 2.0, y - 18., w, 36., 14., Some(C_IVORY), Some(C_CARDLN));
+            self.text(txt, x, y - 12., &self.f.label, C_BLACK, Align::Center);
+        }
+    }
+
+    /// Bilan de fin de manche / de partie.
+    fn overlay(&self, t: &Table) {
+        let ph = t.phase();
+        if ph != PH_ROUNDEND && ph != PH_MATCHEND {
+            return;
+        }
+        let f = self.f;
+        let e = &t.e;
+        let us = t.me & 1;
+        self.g.rrect(&Xf::ID, 250., 110., 600., 430., 20., Some(C_OVER), Some(C_PANELLN));
+        let title = if ph != PH_MATCHEND {
+            "FIN DE MANCHE"
+        } else if e.rs_winner as usize == us {
+            "VICTOIRE !"
+        } else {
+            "Défaite..."
+        };
+        self.text(title, 550., 124., &f.title, C_GOLD, Align::Center);
+        let contract = match e.rs_made {
+            1 => "CONTRAT REMPLI",
+            0 => "DEDANS !",
+            _ => "LITIGE",
+        };
+        self.text(contract, 550., 184., &f.med, C_WHITE, Align::Center);
+        let who = format!(
+            "Preneur : {}   -   atout : {}",
+            t.player_name(e.gs.taker.max(0) as usize),
+            SUIT_NAMES[e.gs.trump.clamp(0, 3) as usize]
+        );
+        self.text(&who, 550., 208., &f.small, C_TXTDIM, Align::Center);
+        let two = t.np() == 2;
+        self.text(if two { "TOI" } else { "NOUS" }, 640., 238., &f.label, C_PLAYER, Align::Right);
+        self.text(if two { "BOT" } else { "EUX" }, 810., 238., &f.label, C_ENEMY, Align::Right);
+        let rows: [(&str, [i32; 2]); 6] = [
+            ("Points des plis", e.gs.rpts),
+            ("Belote-rebelote", e.gs.bel),
+            ("Annonces", e.gs.ann),
+            ("Total", e.rs_tot),
+            ("Marqué", e.rs_add),
+            ("Score", e.score),
+        ];
+        for (r, (name, v)) in rows.iter().enumerate() {
+            let y = 276.0 + 34.0 * r as f32;
+            self.text(name, 290., y, &f.label, if r < 3 { C_TXT } else { C_GOLD }, Align::Left);
+            self.text(&v[us].to_string(), 640., y, &f.label, C_WHITE, Align::Right);
+            self.text(&v[us ^ 1].to_string(), 810., y, &f.label, C_WHITE, Align::Right);
+        }
+        if e.rs_capot >= 0 {
+            self.text("CAPOT ! (+90)", 550., 495., &f.label, C_GOLD, Align::Center);
+        }
+    }
+
+    fn buttons(&self, t: &Table, mouse: (f32, f32)) {
+        for b in buttons(t) {
+            let (mut fill, edge) = if b.active { (C_BTN, C_BTNDK) } else { (C_BTNOFF, C_PANEL) };
+            if b.hit(mouse.0, mouse.1) {
+                fill = C_BTNHOV;
+            }
+            self.g.rrect(&Xf::ID, b.x, b.y, b.w, b.h, 12., Some(fill), Some(edge));
+            let label = match b.id {
+                BtnId::Take => "PRENDRE",
+                BtnId::Pass => "PASSER",
+                BtnId::Next if t.phase() == PH_MATCHEND => "NOUVELLE PARTIE",
+                BtnId::Next => "SUITE",
+                BtnId::Suit(k) => SUIT_NAMES[k],
+            };
+            let col = if b.active { C_WHITE } else { C_TXTDIM };
+            self.text(label, b.x + b.w / 2.0, b.y + 11., &self.f.btn, col, Align::Center);
+        }
+    }
+
+    fn netpanel(&self, title: &str, lines: [&str; 3], menu: bool) {
+        let f = self.f;
+        self.g.rrect(&Xf::ID, 120., 230., 860., 230., 18., Some(C_OVER), Some(C_PANELLN));
+        self.text(title, 550., 248., &f.med, C_GOLD, Align::Center);
+        if menu {
+            self.text(lines[0], 550., 310., &f.label, C_WHITE, Align::Center);
+            self.text(lines[1], 550., 350., &f.small, C_TXTDIM, Align::Center);
+        } else {
+            self.text(lines[0], 550., 300., &f.label, C_WHITE, Align::Center);
+            self.text(lines[1], 550., 345., &f.small, C_TXTDIM, Align::Center);
+            self.text(lines[2], 550., 385., &f.small, C_WHITE, Align::Center);
+        }
+    }
+
+    /// Touche G : les 32 cartes et le dos.
+    fn gallery(&self) {
+        for i in 0..33 {
+            let xf = Xf::place((118 + (i & 7) * 126) as f64, (100 + (i >> 3) * 150) as f64, 0.9, 0.0, 1.0);
+            self.deck.draw(&self.g, &xf, if i < 32 { Some(i) } else { None }, false);
+        }
+    }
+}
+
+/// Ligne des réglages en bas de l'écran.
+pub fn optline(t: &Table) -> String {
+    let yn = |b: bool| if b { "oui" } else { "non" };
+    format!(
+        "J: {} joueurs   L: niveau {}   A: annonces {}   H: aide {}   F11: plein écran   N: en ligne   Echap: quitter",
+        t.np(),
+        LEVEL_NAMES[t.botlvl as usize],
+        yn(t.e.optann != 0),
+        yn(t.help)
+    )
+}
+
+/// Dessine toute l'image.
+pub fn draw(t: &Table, g: Gfx, f: &Fonts, deck: &Deck, ov: &Overlay) {
+    clear_background(BLACK);
+    let s = Scene { g, f, deck };
+    s.table();
+    if ov.gallery {
+        s.gallery();
+        return;
+    }
+    s.talon(t);
+    s.labels(t);
+    s.opp_hands(t);
+    s.tricks(t);
+    s.my_hand(t, ov.hover);
+    s.panels(t);
+    s.bubbles(t);
+    s.overlay(t);
+    s.buttons(t, ov.mouse);
+    s.text(&t.message(), 550., 764., &f.label, C_TXT, Align::Center);
+    s.text(&ov.optline, 550., 782., &f.small, C_TXTDIM, Align::Center);
+    if let Some((title, lines, menu)) = ov.net {
+        s.netpanel(title, lines, menu);
+    }
+}

@@ -1,12 +1,12 @@
-# Belote en 3D isométrique (assembleur x86-64, Windows)
+# Belote en 3D isométrique (Rust, Windows / Linux / macOS)
 
-Belote contre des bots (ou en ligne avec des amis), dans une fenêtre Windows : table ronde en perspective isométrique,
-cartes posées sur le tapis avec rotation et animation. Même esprit que le jeu du 421 : assembleur GNU `as` (syntaxe
-Intel), sans bibliothèque C, uniquement `user32`, `gdi32`, `kernel32` et `ws2_32` (réseau).
+Belote contre des bots (ou en ligne avec des amis) : table ronde en perspective isométrique, cartes posées sur le
+tapis avec rotation et animation. Même esprit que le jeu du 421. Écrit en Rust avec
+[macroquad](https://github.com/not-fl3/macroquad) (OpenGL, anticrénelage 4x) : un seul code pour Windows, Linux et macOS.
 
 ## Lancer
-Double-clic sur `belote.exe` (aucune installation). Les réglages sont mémorisés dans `belote.cfg`
-(supprimer ce fichier remet les valeurs par défaut).
+Double-clic sur `belote.exe` (aucune installation, uniquement des DLL de Windows 10/11). Sous Linux : `./belote`.
+Les réglages sont mémorisés dans `belote.cfg` (texte, supprimer ce fichier remet les valeurs par défaut).
 
 ## Modes de jeu
 | Mode | Joueurs | Principe |
@@ -43,11 +43,12 @@ vide, les obligations de la belote classique s'appliquent. Même décompte (162 
 ## Jouer
 - **Enchères** : boutons PRENDRE / PASSER (1er tour), couleur / PASSER (2e tour).
 - **Jeu** : clique sur une carte (les cartes grisées sont injouables). Espace ou Entrée : SUITE à la fin d'une manche.
-- Raccourcis : `J` 4 joueurs / à deux · `L` niveau des bots · `A` annonces · `H` aide · `P` objectif · `Q` qualité
-  (2x anticrénelé / 1x rapide) · `F11` plein écran · `F12` capture `belote_shot.bmp` · `N` en ligne · `Échap` quitter.
+- Raccourcis : `J` 4 joueurs / à deux · `L` niveau des bots · `A` annonces · `H` aide · `P` objectif ·
+  `F11` plein écran · `F12` capture `belote_shot.png` · `N` en ligne · `Échap` quitter.
 - `H` (aide) : conseil pour prendre ou passer, et la carte conseillée est surlignée en or pendant le jeu.
 - `G` : galerie des 32 cartes et du dos (contrôle du dessin).
 - `U` : l'ordinateur joue à ta place (démonstration / tests).
+- La fenêtre est redimensionnable (proportions gardées) ; sur un petit écran elle est réduite pour tenir.
 
 ## Niveaux des bots (touche `L`)
 - **facile** : heuristiques normales mais 35 % de coups au hasard et enchères bruitées.
@@ -58,26 +59,36 @@ vide, les obligations de la belote classique s'appliquent. Même décompte (162 
   le plus en moyenne ; même méthode pour décider de prendre. En simulation il bat « normal » dans environ 80 % des parties.
 
 ## En ligne (touche `N`)
-Un joueur choisit **H** (héberger) : le jeu affiche ses adresses IP (réseau local, ou VPN type Tailscale / ZeroTier, ou
+Un joueur choisit **H** (héberger) : le jeu affiche son adresse IP (réseau local, ou VPN type Tailscale / ZeroTier, ou
 redirection du port TCP **4210** sur la box). Les autres choisissent **R**, tapent l'IP de l'hôte (`ip` ou `ip:port`) puis Entrée.
 - À **4 joueurs** : jusqu'à 3 invités (le 1er prend la place de ton partenaire). La partie démarre quand ils sont tous là, ou
   quand l'hôte appuie sur **Entrée** : les places libres sont tenues par des bots.
 - En mode **à deux** : un seul invité, la partie démarre dès qu'il est connecté.
 - Principe « lockstep » : toutes les machines exécutent la même partie avec la même graine aléatoire (envoyée par l'hôte) ;
-  seules les actions (enchère, carte jouée, « suite ») circulent, 12 octets chacune. Les joueurs doivent avoir la même version.
+  seules les actions (enchère, carte jouée, « suite ») circulent, 12 octets chacune ; l'hôte relaie celles des invités.
+  Les joueurs doivent avoir la même version (Windows et Linux peuvent jouer ensemble).
   Si quelqu'un se déconnecte, tout le monde revient à une partie locale.
 
-## Fichiers
-- `belote.s` : point d'entrée, `-sim` (banc d'essai sans fenêtre). Inclut tout le reste.
-- `game.s` : règles, état de la donne, enchères, annonces, plis, décompte. `ai.s` : bots facile/normal. `mc.s` : bots difficiles.
-- `cards.s` : dessin des cartes (design bistrot : ivoire, double filet, indices en serif, points comme sur un vrai jeu, figures dans un cadre avec couronnes, dos bordeaux à losanges dorés).
-- `gfx.s` : primitives GDI, polices, transformation isométrique, dessin des cartes, réduction 2x2 (SSE).
-- `ui.s` / `ui2.s` : déroulement, animations, boutons, bulles, tapis, mains, panneaux. `gui.s` : fenêtre, tampons, plein écran,
-  mise à l'échelle, réglages. `net.s` : jeu en ligne. `sim.s` : journal et simulations.
-- Outils de test : `check.py` (rejoue `sim.log` avec une réimplémentation indépendante des règles : légalité de chaque coup,
-  mains, scores, annonces, litiges), `uitest.py` (pilote l'interface par clics + captures), `nettest.py` (2 à 4 instances en ligne
-  qui doivent rester identiques), `shot.py`, `tune.py` / `tune2.py` (réglage des bots).
+## Compiler
+- Windows : `build.bat` (Rust via rustup, cible `x86_64-pc-windows-gnu`, éditeur de liens = gcc de MSYS2 `C:\msys64\ucrt64\bin`).
+  Produit `belote.exe` à la racine.
+- Linux / macOS : `cargo build --release` puis `target/release/belote`.
 
-## Compiler / tester
-`build.bat` (gcc/as/ld de MSYS2 ucrt64). Banc d'essai : `belote.exe -sim <parties> <graine> <joueurs 2|4> <niveau équipe 0> <niveau équipe 1> <journal 0|1>`
-puis `python check.py`.
+## Tests
+- `cargo test --release` : parties complètes en mode automatique (4 joueurs et à deux), lockstep entre 4 machines de
+  vitesses différentes, et une **vraie partie TCP à 4 sur 127.0.0.1** (un hôte qui relaie, trois invités) qui vérifie que
+  les quatre machines restent identiques.
+- Banc d'essai : `belote -sim <parties> <graine> <joueurs 2|4> <niveau équipe 0> <niveau équipe 1> <journal 0|1>`
+  écrit `sim.log`, puis `python check.py` le rejoue avec une réimplémentation indépendante des règles (légalité de
+  chaque coup, mains, scores, annonces, litiges). `tune.py` / `tune2.py` : réglage des bots.
+- `python shot.py sortie.png [actions...]` : lance le jeu, envoie touches et clics, capture l'image (F12).
+
+## Fichiers
+- `src/main.rs` : fenêtre, clavier, souris, plein écran, boucle principale, `-sim`.
+- `src/engine.rs` : moteur (règles, enchères, annonces, plis, décompte, bots facile / normal, Monte-Carlo, banc d'essai).
+- `src/table.rs` : déroulement autour du moteur (tours des bots, délais, animations, bulles, aide, actions en ligne).
+- `src/draw.rs` : dessin de la scène. `src/cards.rs` : dessin des cartes (design bistrot) dans des textures.
+  `src/gfx.rs` : primitives, transformation affine, textes, polices.
+- `src/net.rs` : jeu en ligne (TCP en étoile, trames de 12 octets). `src/cfg.rs` : réglages mémorisés.
+
+La première version (v1.0) était écrite en assembleur x86-64 ; elle reste dans l'historique git.

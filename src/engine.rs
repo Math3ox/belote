@@ -1,16 +1,17 @@
-// Port Rust du moteur de belote (règles, bots normal/difficile, Monte-Carlo, banc d'essai -sim).
-// Même algorithmes, même générateur aléatoire et même journal que la version en assembleur, pour comparer les temps.
-// Usage : belote_rs <parties> <graine> <joueurs> <niveau0> <niveau1> <journal> [seuil1 seuil2 seuil1' seuil2' mcn mcnb mcthr]
+//! Moteur de belote : règles (4 joueurs et belote à deux), annonces, décompte, bots facile / normal /
+//! difficile (Monte-Carlo) et banc d'essai `-sim`. Sans graphisme et déterministe à partir de la graine.
+//! Banc d'essai : belote -sim <parties> <graine> <joueurs> <niveau0> <niveau1> <journal>
+//!                [seuil1 seuil2 seuil1' seuil2' mcn mcnb mcthr]  -> sim.log (vérifié par check.py)
 
 use std::io::Write;
 use std::time::Instant;
 
-const PH_BID1: i32 = 1;
-const PH_BID2: i32 = 2;
-const PH_PLAY: i32 = 3;
-const PH_TRICKEND: i32 = 4;
-const PH_ROUNDEND: i32 = 5;
-const PH_MATCHEND: i32 = 6;
+pub const PH_BID1: i32 = 1;
+pub const PH_BID2: i32 = 2;
+pub const PH_PLAY: i32 = 3;
+pub const PH_TRICKEND: i32 = 4;
+pub const PH_ROUNDEND: i32 = 5;
+pub const PH_MATCHEND: i32 = 6;
 
 const PTS_T: [i32; 8] = [0, 0, 14, 10, 20, 3, 4, 11];
 const PTS_P: [i32; 8] = [0, 0, 0, 10, 2, 3, 4, 11];
@@ -22,70 +23,73 @@ const CARVAL: [i32; 8] = [0, 0, 150, 100, 200, 100, 100, 100];
 
 // Bloc d'état de la donne (copiable pour les simulations)
 #[derive(Clone, Copy, Default)]
-struct Gs {
-    phase: i32,
-    turn: i32,
-    trump: i32,
-    taker: i32,
-    turned: i32,
-    bidrnd: i32,
-    passes: i32,
-    dpos: i32,
-    tn: i32,
-    tlead: i32,
-    led: i32,
-    trickno: i32,
-    lastwin: i32,
-    belp: i32,
-    seenmask: u32,
-    annteam: i32,
-    ev: i32,
-    evp: i32,
-    rpts: [i32; 2],
-    rtr: [i32; 2],
-    bel: [i32; 2],
-    ann: [i32; 2],
-    hn: [i32; 4],
-    void: [u32; 4],
-    anv: [i32; 4],
-    ank: [i32; 4],
-    ann_n: [i32; 4],
-    deck: [u8; 32],
-    hand: [[u8; 8]; 4],
-    tcard: [u8; 8],
+pub struct Gs {
+    pub phase: i32,
+    pub turn: i32,
+    pub trump: i32,
+    pub taker: i32,
+    pub turned: i32,
+    pub bidrnd: i32,
+    pub passes: i32,
+    pub dpos: i32,
+    pub tn: i32,
+    pub tlead: i32,
+    pub led: i32,
+    pub trickno: i32,
+    pub lastwin: i32,
+    pub belp: i32,
+    pub seenmask: u32,
+    pub annteam: i32,
+    pub ev: i32,
+    pub evp: i32,
+    pub rpts: [i32; 2],
+    pub rtr: [i32; 2],
+    pub bel: [i32; 2],
+    pub ann: [i32; 2],
+    pub hn: [i32; 4],
+    pub void: [u32; 4],
+    pub anv: [i32; 4],
+    pub ank: [i32; 4],
+    pub ann_n: [i32; 4],
+    pub deck: [u8; 32],
+    pub hand: [[u8; 8]; 4],
+    pub tcard: [u8; 8],
+    /// annonces de chaque joueur : 1 tierce, 2 cinquante, 3 cent, 4 carré
+    pub anl: [[u8; 4]; 4],
 }
 
-struct G {
-    gs: Gs,
-    np: i32,
-    target: i32,
-    optann: i32,
-    rng: u64,
-    lvl: [i32; 4],
-    dealer: i32,
-    score: [i32; 2],
-    pend: i32,
-    logon: bool,
-    rs_add: [i32; 2],
-    rs_tot: [i32; 2],
-    rs_made: i32,
-    rs_capot: i32,
-    rs_pend: i32,
-    rs_npend: i32,
-    mcflag: bool,
-    rs_winner: i32,
-    bmine: u32,
-    thr1: [i32; 3],
-    thr2: [i32; 3],
-    mcn: i32,
-    mcnb: i32,
-    mcthr: i32,
-    log: Vec<u8>,
-    mcu: [u8; 40],
-    mcm: usize,
-    snap0: Gs,
-    snap1: Gs,
-    mcsum: [i32; 8],
+#[derive(Clone)]
+pub struct Engine {
+    pub gs: Gs,
+    pub np: i32,
+    pub target: i32,
+    pub optann: i32,
+    pub rng: u64,
+    pub lvl: [i32; 4],
+    pub dealer: i32,
+    pub score: [i32; 2],
+    pub pend: i32,
+    pub logon: bool,
+    pub rs_add: [i32; 2],
+    pub rs_tot: [i32; 2],
+    pub rs_made: i32,
+    pub rs_capot: i32,
+    pub rs_pend: i32,
+    pub rs_npend: i32,
+    pub mcflag: bool,
+    pub rs_winner: i32,
+    pub bmine: u32,
+    pub thr1: [i32; 3],
+    pub thr2: [i32; 3],
+    pub mcn: i32,
+    pub mcnb: i32,
+    pub mcthr: i32,
+    pub log: Vec<u8>,
+    pub mcu: [u8; 40],
+    pub mcm: usize,
+    pub snap0: Gs,
+    pub snap1: Gs,
+    pub mcsum: [i32; 8],
 }
 
 #[inline]
@@ -93,9 +97,9 @@ fn bit(m: u32, i: i32) -> bool {
     (m >> i) & 1 != 0
 }
 
-impl G {
-    fn new() -> G {
-        G {
+impl Engine {
+    pub fn new() -> Engine {
+        Engine {
             gs: Gs::default(),
             np: 4,
             target: 1000,
@@ -120,7 +124,7 @@ impl G {
             mcn: 60,
             mcnb: 40,
             mcthr: 12,
-            log: Vec::with_capacity(1 << 22),
+            log: Vec::new(),
             mcu: [0; 40],
             mcm: 0,
             snap0: Gs::default(),
@@ -131,7 +135,7 @@ impl G {
 
     // ---------- aléatoire ----------
     #[inline]
-    fn rng_next(&mut self) -> u32 {
+    pub fn rng_next(&mut self) -> u32 {
         let mut x = self.rng;
         x ^= x << 13;
         x ^= x >> 7;
@@ -140,17 +144,17 @@ impl G {
         (x >> 32) as u32
     }
     #[inline]
-    fn rng_mod(&mut self, n: u32) -> u32 {
+    pub fn rng_mod(&mut self, n: u32) -> u32 {
         self.rng_next() % n
     }
 
     // ---------- journal ----------
-    fn lg_num(&mut self, v: i32) {
+    pub fn lg_num(&mut self, v: i32) {
         let s = v.to_string();
         self.log.extend_from_slice(s.as_bytes());
         self.log.push(b' ');
     }
-    fn log_deck(&mut self) {
+    pub fn log_deck(&mut self) {
         if !self.logon {
             return;
         }
@@ -162,7 +166,7 @@ impl G {
         }
         self.log.push(b'\n');
     }
-    fn log_bid(&mut self, p: i32, ch: i32) {
+    pub fn log_bid(&mut self, p: i32, ch: i32) {
         if !self.logon {
             return;
         }
@@ -171,7 +175,7 @@ impl G {
         self.lg_num(ch);
         self.log.push(b'\n');
     }
-    fn log_play(&mut self, p: i32, card: i32) {
+    pub fn log_play(&mut self, p: i32, card: i32) {
         if !self.logon {
             return;
         }
@@ -184,7 +188,7 @@ impl G {
         }
         self.log.push(b'\n');
     }
-    fn log_score(&mut self) {
+    pub fn log_score(&mut self) {
         if !self.logon {
             return;
         }
@@ -201,7 +205,7 @@ impl G {
 
     // ---------- cartes ----------
     #[inline]
-    fn card_key(&self, c: u8) -> i32 {
+    pub fn card_key(&self, c: u8) -> i32 {
         let s = (c >> 3) as i32;
         let r = (c & 7) as usize;
         if s == self.gs.trump {
@@ -213,7 +217,7 @@ impl G {
         }
     }
     #[inline]
-    fn card_pts(&self, c: u8) -> i32 {
+    pub fn card_pts(&self, c: u8) -> i32 {
         let s = (c >> 3) as i32;
         let r = (c & 7) as usize;
         if s == self.gs.trump {
@@ -224,12 +228,12 @@ impl G {
     }
 
     // ---------- mains ----------
-    fn hand_add(&mut self, p: usize, card: u8) {
+    pub fn hand_add(&mut self, p: usize, card: u8) {
         let n = self.gs.hn[p] as usize;
         self.gs.hand[p][n] = card;
         self.gs.hn[p] += 1;
     }
-    fn hand_remove(&mut self, p: usize, pos: usize) -> u8 {
+    pub fn hand_remove(&mut self, p: usize, pos: usize) -> u8 {
         let card = self.gs.hand[p][pos];
         let n = (self.gs.hn[p] - 1) as usize;
         self.gs.hn[p] = n as i32;
@@ -240,7 +244,7 @@ impl G {
         }
         card
     }
-    fn hand_key(&self, c: u8) -> i32 {
+    pub fn hand_key(&self, c: u8) -> i32 {
         let s = (c >> 3) as i32;
         let r = (c & 7) as usize;
         if s == self.gs.trump {
@@ -249,7 +253,7 @@ impl G {
             (DISP[s as usize] + 1) * 8 + 7 - ORD_P[r]
         }
     }
-    fn hand_sort(&mut self, p: usize) {
+    pub fn hand_sort(&mut self, p: usize) {
         let n = self.gs.hn[p] as usize;
         for i in 1..n {
             let card = self.gs.hand[p][i];
@@ -266,28 +270,28 @@ impl G {
             self.gs.hand[p][j] = card;
         }
     }
-    fn sort_all(&mut self) {
+    pub fn sort_all(&mut self) {
         for p in 0..self.np as usize {
             self.hand_sort(p);
         }
     }
-    fn deck_draw_to(&mut self, p: usize) {
+    pub fn deck_draw_to(&mut self, p: usize) {
         let c = self.gs.deck[self.gs.dpos as usize];
         self.gs.dpos += 1;
         self.hand_add(p, c);
     }
-    fn hand_mask(&self, p: usize) -> u32 {
+    pub fn hand_mask(&self, p: usize) -> u32 {
         let mut m = 0u32;
         for i in 0..self.gs.hn[p] as usize {
             m |= 1 << self.gs.hand[p][i];
         }
         m
     }
-    fn hand_has(&self, p: usize, card: u8) -> bool {
+    pub fn hand_has(&self, p: usize, card: u8) -> bool {
         (0..self.gs.hn[p] as usize).any(|i| self.gs.hand[p][i] == card)
     }
 
-    fn shuffle(&mut self) {
+    pub fn shuffle(&mut self) {
         for i in 0..32 {
             self.gs.deck[i] = i as u8;
         }
@@ -298,7 +302,7 @@ impl G {
             i -= 1;
         }
     }
-    fn deal_each(&mut self, count: i32) {
+    pub fn deal_each(&mut self, count: i32) {
         for k in 1..=self.np {
             let p = ((self.dealer + k) % self.np) as usize;
             for _ in 0..count {
@@ -308,7 +312,7 @@ impl G {
     }
 
     // ---------- donne ----------
-    fn new_round(&mut self) {
+    pub fn new_round(&mut self) {
         self.gs = Gs::default();
         self.gs.trump = -1;
         self.gs.taker = -1;
@@ -331,18 +335,18 @@ impl G {
         self.gs.turn = (self.dealer + 1) % self.np;
         self.log_deck();
     }
-    fn next_round(&mut self) {
+    pub fn next_round(&mut self) {
         self.dealer = (self.dealer + 1) % self.np;
         self.new_round();
     }
-    fn new_match(&mut self) {
+    pub fn new_match(&mut self) {
         self.score = [0, 0];
         self.pend = 0;
         self.rs_winner = -1;
     }
 
     // ---------- enchères ----------
-    fn take_cards(&mut self) {
+    pub fn take_cards(&mut self) {
         let taker = self.gs.taker as usize;
         let turned = self.gs.turned as u8;
         self.hand_add(taker, turned);
@@ -360,7 +364,7 @@ impl G {
         }
     }
 
-    fn do_bid(&mut self, choice: i32) {
+    pub fn do_bid(&mut self, choice: i32) {
         let p = self.gs.turn;
         self.log_bid(p, choice);
         if choice != -1 {
@@ -391,10 +395,11 @@ impl G {
     }
 
     // ---------- annonces ----------
-    fn add_annonce(&mut self, p: usize, value: i32, key: i32) {
+    pub fn add_annonce(&mut self, p: usize, kind: u8, value: i32, key: i32) {
         if self.gs.ann_n[p] >= 4 {
             return;
         }
+        self.gs.anl[p][self.gs.ann_n[p] as usize] = kind;
         self.gs.ann_n[p] += 1;
         self.gs.anv[p] += value;
         if key > self.gs.ank[p] {
@@ -402,7 +407,7 @@ impl G {
         }
     }
 
-    fn compute_annonces(&mut self) {
+    pub fn compute_annonces(&mut self) {
         for p in 0..self.np as usize {
             let mut m = [0u32; 4];
             for i in 0..self.gs.hn[p] as usize {
@@ -412,7 +417,7 @@ impl G {
             for r in 2..8usize {
                 let b = 1u32 << r;
                 if m[0] & b != 0 && m[1] & b != 0 && m[2] & b != 0 && m[3] & b != 0 {
-                    self.add_annonce(p, CARVAL[r], 4000 + CARORD[r] * 10);
+                    self.add_annonce(p, 4, CARVAL[r], 4000 + CARORD[r] * 10);
                 }
             }
             for s in 0..4usize {
@@ -437,20 +442,20 @@ impl G {
                     if s as i32 == self.gs.trump {
                         key += 5;
                     }
-                    let (value, base) = if len >= 5 {
-                        (100, 3000)
+                    let (kind, value, base) = if len >= 5 {
+                        (3, 100, 3000)
                     } else if len == 4 {
-                        (50, 2000)
+                        (2, 50, 2000)
                     } else {
-                        (20, 1000)
+                        (1, 20, 1000)
                     };
-                    self.add_annonce(p, value, key + base);
+                    self.add_annonce(p, kind, value, key + base);
                 }
             }
         }
     }
 
-    fn eval_annonces(&mut self) {
+    pub fn eval_annonces(&mut self) {
         let mut k0 = 0;
         let mut k1 = 0;
         self.gs.annteam = -1;
@@ -494,7 +499,7 @@ impl G {
     }
 
     // ---------- jeu ----------
-    fn trick_best(&self) -> (i32, i32) {
+    pub fn trick_best(&self) -> (i32, i32) {
         let mut best = -2;
         let mut bp = 0;
         for q in 0..4usize {
@@ -511,7 +516,7 @@ impl G {
         (bp, best)
     }
 
-    fn legal_mask(&self, p: usize) -> u32 {
+    pub fn legal_mask(&self, p: usize) -> u32 {
         let n = self.gs.hn[p];
         let all = (1u32 << n) - 1;
         if self.gs.tn == 0 {
@@ -574,7 +579,7 @@ impl G {
         }
     }
 
-    fn do_play(&mut self, pos: usize) {
+    pub fn do_play(&mut self, pos: usize) {
         let p = self.gs.turn as usize;
         let card = self.hand_remove(p, pos);
         self.log_play(p as i32, card as i32);
@@ -611,7 +616,7 @@ impl G {
         }
     }
 
-    fn trick_collect(&mut self) {
+    pub fn trick_collect(&mut self) {
         let (w, _) = self.trick_best();
         let mut pts = 0;
         for q in 0..4usize {
@@ -653,7 +658,7 @@ impl G {
     }
 
     // ---------- décompte ----------
-    fn calc_round(&mut self) {
+    pub fn calc_round(&mut self) {
         let a = (self.gs.taker & 1) as usize;
         let b = a ^ 1;
         self.rs_capot = -1;
@@ -702,7 +707,7 @@ impl G {
         self.rs_add[winner] += self.pend;
     }
 
-    fn score_round(&mut self) {
+    pub fn score_round(&mut self) {
         self.calc_round();
         self.pend = self.rs_npend;
         self.score[0] += self.rs_add[0];
@@ -716,7 +721,7 @@ impl G {
     }
 
     // ---------- bots : enchères ----------
-    fn clamp_lvl(&self, p: usize) -> i32 {
+    pub fn clamp_lvl(&self, p: usize) -> i32 {
         if self.mcflag {
             return 1;
         }
@@ -730,7 +735,7 @@ impl G {
         }
     }
 
-    fn eval_suit(&self, p: usize, s: i32, with_turned: bool) -> i32 {
+    pub fn eval_suit(&self, p: usize, s: i32, with_turned: bool) -> i32 {
         let mut m = self.hand_mask(p);
         if with_turned {
             m |= 1 << self.gs.turned;
@@ -767,7 +772,7 @@ impl G {
         v
     }
 
-    fn bot_bid(&mut self, p: usize) -> i32 {
+    pub fn bot_bid(&mut self, p: usize) -> i32 {
         let lvl = self.clamp_lvl(p);
         if lvl == 2 {
             return self.mc_bid(p);
@@ -807,7 +812,7 @@ impl G {
     }
 
     // ---------- bots : jeu ----------
-    fn is_master(&self, c: u8) -> bool {
+    pub fn is_master(&self, c: u8) -> bool {
         let s = (c >> 3) as i32;
         let r = (c & 7) as usize;
         let ord = if s == self.gs.trump { &ORD_T } else { &ORD_P };
@@ -821,7 +826,7 @@ impl G {
         true
     }
 
-    fn bot_lead(&self, p: usize, mask: u32) -> usize {
+    pub fn bot_lead(&self, p: usize, mask: u32) -> usize {
         let n = self.gs.hn[p] as usize;
         let mut bsc = [0i32; 4];
         for i in 0..n {
@@ -871,7 +876,7 @@ impl G {
         bpos
     }
 
-    fn bot_follow(&self, p: usize, mask: u32) -> usize {
+    pub fn bot_follow(&self, p: usize, mask: u32) -> usize {
         let (bestp, bestkey) = self.trick_best();
         let n = self.gs.hn[p] as usize;
         let mut bwk = 1000;
@@ -942,7 +947,7 @@ impl G {
         }
     }
 
-    fn bot_card(&mut self, p: usize) -> usize {
+    pub fn bot_card(&mut self, p: usize) -> usize {
         let mask = self.legal_mask(p);
         if mask.count_ones() == 1 {
             return mask.trailing_zeros() as usize;
@@ -976,21 +981,21 @@ impl G {
     }
 
     // ---------- Monte-Carlo ----------
-    fn mc_begin(&mut self) -> (bool, i32) {
+    pub fn mc_begin(&mut self) -> (bool, i32) {
         let sv = (self.logon, self.optann);
         self.logon = false;
         self.optann = 0;
         self.mcflag = true;
         sv
     }
-    fn mc_end(&mut self, sv: (bool, i32)) {
+    pub fn mc_end(&mut self, sv: (bool, i32)) {
         self.logon = sv.0;
         self.optann = sv.1;
         self.mcflag = false;
         self.gs.ev = 0;
     }
 
-    fn mc_rollout(&mut self) {
+    pub fn mc_rollout(&mut self) {
         for _ in 0..79 {
             let ph = self.gs.phase;
             if ph == PH_PLAY {
@@ -1005,13 +1010,13 @@ impl G {
         }
     }
 
-    fn mc_value(&mut self, p: usize) -> i32 {
+    pub fn mc_value(&mut self, p: usize) -> i32 {
         self.calc_round();
         let t = p & 1;
         self.rs_add[t] - self.rs_add[t ^ 1]
     }
 
-    fn mc_shuffle(&mut self) {
+    pub fn mc_shuffle(&mut self) {
         let mut i = self.mcm as i32 - 1;
         while i > 0 {
             let j = self.rng_mod(i as u32 + 1) as usize;
@@ -1020,7 +1025,7 @@ impl G {
         }
     }
 
-    fn mc_determinize(&mut self, p: usize) {
+    pub fn mc_determinize(&mut self, p: usize) {
         let mut unseen = !(self.hand_mask(p) | self.gs.seenmask);
         let mut known: i32 = -1;
         if self.gs.taker >= 0 && self.gs.taker != p as i32 && bit(unseen, self.gs.turned) {
@@ -1078,7 +1083,7 @@ impl G {
         }
     }
 
-    fn mc_choose(&mut self, p: usize) -> usize {
+    pub fn mc_choose(&mut self, p: usize) -> usize {
         let mask = self.legal_mask(p);
         let sv = self.mc_begin();
         self.snap0 = self.gs;
@@ -1111,7 +1116,7 @@ impl G {
         bpos
     }
 
-    fn mc_deal_bid(&mut self, p: usize, s: i32) {
+    pub fn mc_deal_bid(&mut self, p: usize, s: i32) {
         let unseen = !(self.hand_mask(p) | (1u32 << self.gs.turned));
         let mut m = 0usize;
         for c in 0..32u32 {
@@ -1171,7 +1176,7 @@ impl G {
         self.gs.tcard = [0xFF; 8];
     }
 
-    fn mc_bid(&mut self, p: usize) -> i32 {
+    pub fn mc_bid(&mut self, p: usize) -> i32 {
         let sv = self.mc_begin();
         self.snap0 = self.gs;
         let mut best = -2000000000;
@@ -1208,15 +1213,16 @@ impl G {
     }
 }
 
-fn main() {
-    let a: Vec<String> = std::env::args().collect();
+/// Banc d'essai sans fenêtre : `a` = arguments après `-sim`. Écrit le journal dans sim.log.
+pub fn sim_main(a: &[String]) {
     let mut args = [10i32, 1, 4, 1, 1, 0, -1000, 0, 0, 0, -1000, -1000, -1000];
-    for (i, s) in a.iter().skip(1).enumerate() {
+    for (i, s) in a.iter().enumerate() {
         if i < args.len() {
             args[i] = s.parse().unwrap_or(0);
         }
     }
-    let mut g = G::new();
+    let mut g = Engine::new();
+    g.log.reserve(1 << 22);
     g.rng = ((args[1] as u32 as u64).wrapping_mul(0x9E3779B97F4A7C15)) | 1;
     g.np = args[2];
     g.logon = args[5] != 0;
@@ -1285,6 +1291,6 @@ fn main() {
     let dt = t0.elapsed();
     let line = format!("# {} {} {} {} \n", games, v0, v1, rounds);
     g.log.extend_from_slice(line.as_bytes());
-    std::fs::File::create("sim_rs.log").unwrap().write_all(&g.log).unwrap();
+    std::fs::File::create("sim.log").unwrap().write_all(&g.log).unwrap();
     eprintln!("temps {:.3} s", dt.as_secs_f64());
 }

@@ -1,2 +1,2 @@
-*.s text eol=lf
+*.rs text eol=lf
 *.bat text eol=crlf

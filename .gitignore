@@ -5,3 +5,5 @@ sim.log
 *.png
 *.zip
 __pycache__/
+sim_rs.log
+rust/target/
